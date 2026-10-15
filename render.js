@@ -4,7 +4,7 @@
 // ---------- parts: the mad-lib labels ----------
 // Every tunable word sits on a dotted blank, like a Mad Libs page. In the headline, a small
 // label under each card's phrase names the part (from the grammar: WHO, WHAT HAPPENED; IMAGE,
-// PLACE), and nested phrases get one too ("thing, inside"). Labels show on a first visit and
+// PLACE), and nested phrases get their own card's label too (THING inside WHAT HAPPENED). Labels show on a first visit and
 // fade once you've tuned a few words; Show parts (in Rules) turns them on or off for good.
 const PARTS_KEY = "story-bits-parts"; // "on" | "off" | absent (automatic)
 const TUNES_KEY = "story-bits-tunes";
@@ -34,9 +34,15 @@ function labelParts(root) {
     const l = document.createElement("span");
     l.className = "part-label";
     l.setAttribute("aria-hidden", "true");
-    l.textContent = ph.classList.contains("nested") ? `${card.label.toLowerCase()}, inside` : card.label;
+    l.textContent = card.label;
     ph.prepend(l);
   });
+  // A nested phrase's label gives way where it would sit on another ("lost" is too short to hold
+  // WHAT HAPPENED before "a dog" starts), so every label that shows can be read.
+  const ls = [...root.querySelectorAll(".part-label")];
+  const at = new Map(ls.map((l) => [l, l.getBoundingClientRect()]));
+  const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  for (const l of ls) if (l.parentElement.classList.contains("nested") && ls.some((m) => m !== l && !m.hidden && hits(at.get(l), at.get(m)))) l.hidden = true;
 }
 // What the marks on words mean, at the foot of the picker.
 const marksHtml = () => `<p class="pk-marks"><span class="mk-blank">dotted</span> can change · <span class="mk-pin">underlined</span> pinned${state.room ? ` · <span class="mk-note">wavy</span> has a comment · <span class="mk-peer">outlined</span> someone's on it` : ""}</p>`;
@@ -74,6 +80,9 @@ function render() {
   $("#grammar-pick").innerHTML = grammarOptions();
   $("#grammar-desc").textContent = [G.description, ...(G.rules.constraints || []).map(describeConstraint).filter(Boolean).map((x) => cap(x) + ".")].filter(Boolean).join(" ");
   $("#headline-name").textContent = G.headline || "The line";
+  // Show parts names this grammar's own cards: (who, what happened…), (image, motion…).
+  const partsNote = $(".parts-toggle .menu-note");
+  if (partsNote) partsNote.textContent = `label each part of the ${(G.headline || "The line").replace(/^the\s+/i, "").toLowerCase()} (${SLOTS.slice(0, 2).map((c) => c.label.toLowerCase()).join(", ")}…)`;
   $("#dial-name").textContent = G.rules.dialName || "Dial";
   document.querySelectorAll(".dial button[data-dial]").forEach((b) => { b.textContent = G.rules.dialLabels[+b.dataset.dial]; });
   $("#forms").innerHTML = Object.entries(FORMS).map(([k, f]) =>

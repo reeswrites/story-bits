@@ -138,7 +138,7 @@ function renderShelf() {
   if (help) help.textContent = k.note || `What you've kept in ${G.name}, and every ${(G.headline || "The line").replace(/^the\s+/i, "").toLowerCase()} it has been in.`;
   const here = shelfHere();
   if (!here.length) {
-    el.innerHTML = `<p class="empty">Nothing yet. Choose <i>${esc(k.verb)}</i> (<kbd>k</kbd>) and it lands here. Then tell another with it, and it starts to feel like something you know.</p>`;
+    el.innerHTML = `<p class="empty">Nothing yet. Choose <i>${esc(k.verb)}</i><span class="kbd-hint"> (<kbd>k</kbd>)</span> and it lands here. Then tell another with it, and it starts to feel like something you know.</p>`;
     return;
   }
   el.innerHTML = here.map(({ c, i }) => {

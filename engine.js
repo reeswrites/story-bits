@@ -133,9 +133,12 @@ function allowed(schema, ph, part) {
   if (part.trailing && ph.x) return false;
   if (part.determiner && related(schema, ph)) return false;
   if (!part.needs) return true;
-  if (part.needs === "adj") return !!word(schema, ph, "n").adj;
+  if (needsFlag(schema, part)) return !!word(schema, ph, "n")[part.needs];
   return part.needs in ph.w;
 }
+// A slot's needs names another slot of its card, or else a flag its head word must carry ("adj":
+// "really" only before a short feeling; "about": "about a dog" only after a plain emotion).
+const needsFlag = (schema, part) => !!part.needs && !SCHEMAS[schema].parts.some((p) => p.k === part.needs);
 // Every value a slot can take at this depth: the grammar's live words that pass its constraints,
 // then your bank's words for this grammar (unless the grammar is closed).
 function options(schema, part, depth) {
@@ -161,10 +164,22 @@ function setWord(schema, ph, k, val, depth) {
     // keep it
   } else if (inner) {
     ph.sub = ph.sub || {};
-    ph.sub[k] = randomPhrase(inner, depth + 1, undefined, !!(SCHEMAS[schema].noun && partOf(schema, k).trailing));
+    ph.sub[k] = randomPhrase(inner, depth + 1, undefined, nestX(schema, k, entryOf(schema, k, val)));
   } else if (ph.sub) delete ph.sub[k];
   tidy(schema, ph);
   return ph;
+}
+// A nested phrase takes no trailing clause of its own when something follows it, so every clause
+// has one owner: inside a noun card's trailing clause, before the rest of its word ("found {thing}
+// in the attic"), or before a trailing slot of the outer card ("about {thing}", then "and has
+// started a podcast").
+function nestX(schema, k, entry) {
+  const parts = SCHEMAS[schema].parts, part = partOf(schema, k);
+  if (SCHEMAS[schema].noun && part.trailing) return true;
+  const inner = nestKey(entry);
+  if (!inner || !SCHEMAS[inner].parts.some((p) => p.trailing)) return false;
+  if (entry.t.split(`{${inner}}`).slice(1).join("").trim()) return true;
+  return parts.slice(parts.indexOf(part) + 1).some((p) => p.trailing);
 }
 function dropWord(schema, ph, k) {
   // Dropping a relation hands its determiner back: "your uncle's dentist" → "your dentist".
@@ -270,12 +285,12 @@ function tokens(schema, ph, who, slot, path = [], ghosts = false) {
   }
   // A determiner slot's "a" agrees with the word after it: "an uncle", "a tall uncle".
   for (const [i, t] of out.entries()) if (t.part?.determiner && /^an?$/i.test(t.word)) t.word = /^[aeiou]/i.test(firstText(out.slice(i + 1))) ? "an" : "a";
-  // Determiner: an article card takes a/an; a head word with a determiner brings its own. A
+  // Determiner: an article card takes a/an (not before a mass noun: "weather"); a head word with a determiner brings its own. A
   // phrase that opens with a filled relation slot ("your uncle's dentist") already has one, and so
   // does a card with a determiner slot.
   const parts = SCHEMAS[schema].parts;
   const ledByRelation = parts.slice(0, parts.findIndex((p) => p.k === "n")).some((p) => p.relation && p.k in ph.w);
-  let det = ledByRelation || parts.some((p) => p.determiner) ? "" : SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
+  let det = ledByRelation || parts.some((p) => p.determiner) ? "" : SCHEMAS[schema].article ? (word(schema, ph, "n").mass ? "" : "a") : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
   // "a"/"an" agree with the next word, also after a preposition ("under an old stair").
   if (/(^|\s)an?$/.test(det)) det = det.replace(/an?$/, /^[aeiou]/i.test(firstText(out)) ? "an" : "a");
   if (det) out.unshift({ text: det });
@@ -499,7 +514,7 @@ function applyPins(slot, cand) {
       if (!a || !(k in a.w)) break;
       const keep = [k];
       const need = partOf(schema, k).needs;
-      if (need === "adj") keep.push("n");
+      if (needsFlag(schema, partOf(schema, k))) keep.push("n");
       else if (need) keep.push(need);
       for (const kk of keep) {
         if (same(b.w[kk], a.w[kk])) continue;
@@ -574,6 +589,8 @@ const MOVES = [
 const MOVE_MAX = 30;
 const tagsOf = (e) => (Array.isArray(e.tags) ? e.tags : []);
 const sharedTags = (a, b) => tagsOf(a).filter((t) => tagsOf(b).includes(t)).length;
+// 1 when both words nest the same card (two frames around one hole), else 0.
+const sameHole = (a, b) => (nestKey(a) && nestKey(a) === nestKey(b) ? 1 : 0);
 // A slot that holds a bigger phrase around this one: flagged, or with words that nest a card.
 const zoomPart = (part) => !!part.relation || part.pool.some(nests);
 // A word as it reads, with a nested phrase spelled out.
@@ -615,8 +632,9 @@ function moveCandidates(slot, path, move) {
     const i = vals.findIndex((v) => same(v, cur));
     for (const v of move === "plainer" ? vals.slice(0, i).reverse() : vals.slice(i + 1)) set(at.k, v);
   } else if (move === "sideways") {
-    // Same slot, same register; words sharing a tag first, then (for a slot with mood) the same mood.
-    const score = (v) => { const e = entryOf(at.schema, at.k, v); return sharedTags(e, entry) * 2 + (part.mood && e.v === entry.v ? 1 : 0); };
+    // Same slot, same register; a frame around the same card first (so "lost a dog" → "won a dog"
+    // keeps the dog), then words sharing a tag, then (for a slot with mood) the same mood.
+    const score = (v) => { const e = entryOf(at.schema, at.k, v); return sameHole(e, entry) * 8 + sharedTags(e, entry) * 2 + (part.mood && e.v === entry.v ? 1 : 0); };
     const vals = othersFor(at, part, cur).filter((v) => entryOf(at.schema, at.k, v).tier === entry.tier);
     vals.map((v, i) => ({ v, i, s: score(v) })).sort((a, b) => b.s - a.s || a.i - b.i).forEach((x) => set(at.k, x.v));
   } else if (move === "zoom") {
@@ -637,7 +655,7 @@ function moveCandidates(slot, path, move) {
             const inside = clone(ph);
             setWord(schema, ph, p.k, v, depth);
             // Inside a noun card's trailing clause, a phrase takes no clause of its own.
-            if (SCHEMAS[schema].noun && p.trailing) { inside.x = 1; tidy(schema, inside); } else delete inside.x;
+            if (nestX(schema, p.k, entryOf(schema, p.k, v))) { inside.x = 1; tidy(schema, inside); } else delete inside.x;
             ph.sub[p.k] = inside;
             for (const q of parts) if (q.k !== "n" && q.k !== p.k) dropWord(schema, ph, q.k);
             setWord(schema, ph, "n", h, depth);
@@ -672,10 +690,12 @@ function moveCandidates(slot, path, move) {
       const now = at.ph.w[k];
       const e = entryOf(at.schema, k, now);
       const want = e.v === 0 ? [1, -1] : [-e.v];
+      // A frame around the same card first, keeping what's inside ("won a dog" → "lost a dog"),
+      // then a word from the same family, then the nearest register.
       othersFor(at, partOf(at.schema, k), now)
         .map((v, i) => ({ v, i, e: entryOf(at.schema, k, v) }))
         .filter((x) => want.includes(x.e.v))
-        .sort((a, b) => Math.abs(a.e.tier - e.tier) - Math.abs(b.e.tier - e.tier) || a.i - b.i)
+        .sort((a, b) => sameHole(b.e, e) - sameHole(a.e, e) || Math.abs(a.e.tier - e.tier) - Math.abs(b.e.tier - e.tier) || sharedTags(b.e, e) - sharedTags(a.e, e) || a.i - b.i)
         .forEach((x) => set(k, x.v));
     }
   } else if (move === "sound") {

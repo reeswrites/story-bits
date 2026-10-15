@@ -237,7 +237,7 @@ test("removeSlot drops only optional slots, and not ones another slot needs", ()
     const g = GRAMMARS["story-bits"], a = grammarOps;
     const out = a.removeSlot(g, "who", "d");
     const parts = out.grammar.schemas.who.parts;
-    const needed = Object.entries(g.schemas).flatMap(([c, s]) => s.parts.filter((p) => p.needs && p.needs !== "adj").map((p) => [c, p.needs]));
+    const needed = Object.entries(g.schemas).flatMap(([c, s]) => s.parts.filter((p) => p.needs && s.parts.some((q) => q.k === p.needs)).map((p) => [c, p.needs]));
     return { label: out.label, left: parts.map((p) => p.k), grow: out.grammar.schemas.who.grow, head: a.removeSlot(g, "who", "n").error, missing: a.removeSlot(g, "who", "z").error,
       needErr: needed.length ? a.removeSlot(g, needed[0][0], needed[0][1]).error : "skip", ok: checkGrammar(out.grammar) };`);
   assert.equal(r.label, "removed slot 'descriptor' from Who");

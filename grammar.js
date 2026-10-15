@@ -223,7 +223,8 @@ function checkGrammar(g) {
       if (typeof p.k !== "string" || !/^[a-z]$/.test(p.k)) return `card "${key}": slot keys are single letters`;
       if (typeof p.name !== "string" || !p.name.trim() || p.name.length > 24) return `card "${key}" slot "${p.k}" needs a name`;
       if (p.odds !== undefined && (typeof p.odds !== "number" || !(p.odds >= 0 && p.odds <= 1) || !p.opt)) return `card "${key}" slot "${p.k}": odds is a number from 0 to 1, on an optional slot`;
-      if (p.needs !== undefined && p.needs !== "adj" && !pk.has(p.needs)) return `card "${key}" slot "${p.k}" needs a slot that doesn't exist`;
+      // needs: another slot of this card, or a flag some head word carries ("adj", "about").
+      if (p.needs !== undefined && p.needs !== "adj" && !pk.has(p.needs) && !(typeof p.needs === "string" && /^[a-z]{2,16}$/.test(p.needs) && Array.isArray(head.pool) && head.pool.some((w) => w?.[p.needs] === true))) return `card "${key}" slot "${p.k}" needs a slot that doesn't exist`;
       if (p.determiner !== undefined && (p.determiner !== true || p.opt || sc.parts.findIndex((x) => x.k === "n") < sc.parts.indexOf(p))) return `card "${key}" slot "${p.k}": a determiner slot is required and comes before the head`;
       if (p.relation !== undefined && (p.relation !== true || !p.opt || sc.parts.findIndex((x) => x.k === "n") < sc.parts.indexOf(p) || !p.pool.every((w) => typeof w?.t === "string" && w.t.includes(`{${key}}`)))) return `card "${key}" slot "${p.k}": a relation slot is optional, comes before the head, and every word nests this card ({${key}})`;
       if (p.determiner && p.relation) return `card "${key}" slot "${p.k}": a slot can't be both a determiner and a relation`;

@@ -19,7 +19,7 @@ A grammar is one shareable, forkable JSON document:
 | part | what it is |
 |---|---|
 | `cards` | the pieces of a piece (story: who, what happened, how they feel, where, thing) |
-| `schemas` | each card's ordered word slots (`[intensity] [quality] noun [clause]`) and their word pools; slot flags: `opt`, `needs`, `mood`, `det`, `pronouns`, `trailing`, `determiner`, `relation`; pool words may carry `tags` (1–4 short lowercase family names) |
+| `schemas` | each card's ordered word slots (`[intensity] [quality] noun [clause]`) and their word pools; slot flags: `opt`, `needs` (another slot, or a flag the head word carries: `adj`, `about`), `mood`, `det`, `pronouns`, `trailing`, `determiner`, `relation`; pool words may carry `tags` (1–4 short lowercase family names) and `mass: true` (no a/an on an article card) |
 | `line` | the headline: a template over cards and pronouns (`{who} {what}, and {p} {is} {feel}.`) |
 | `forms` | shapes of a telling: stanzas that bring in cards and fill paragraphs with beats; beat lines are tiered plain → strange |
 | `rules` | what the dial means: which card pairs can clash and on what (`mood`, `register`, `sound`), whether every form must land, and word constraints |
@@ -46,7 +46,10 @@ or a closed word set. They filter the options the picker and shuffles draw from,
 grammar can't produce a word that breaks it.
 
 **Nesting** is any word whose text names a card (`blames {thing}`): that word holds a whole phrase
-of that card, tunable the same way, to `maxDepth`.
+of that card, tunable the same way, to `maxDepth`. A nested phrase takes no trailing clause of its
+own when anything follows it (the rest of its word, or a later trailing slot of its card), so
+every clause has one owner: *found an accordion in the attic*, never *found an accordion that
+remembers everything in the attic*.
 
 **Moves** are the picker's lateral changes, generated from grammar data alone (`moveCandidates` in
 engine.js). Each returns whole-phrase candidates, nearest first:
@@ -54,10 +57,10 @@ engine.js). Each returns whole-phrase candidates, nearest first:
 | move | from the grammar |
 |---|---|
 | plainer / stranger | the slot's words ordered by tier (‹ ›) |
-| sideways | same slot and tier; words sharing a `tags` entry first (`tags: ["family"]`), then the same mood; with no tags, just the same tier |
+| sideways | same slot and tier; a word nesting the same card first (a frame around the same hole keeps what's inside), then words sharing a `tags` entry (`tags: ["family"]`), then the same mood; with no tags, just the same tier |
 | zoom out | an empty (or other) optional slot that nests a card: flagged `relation: true`, or found by its nesting words. A relation slot that nests its own card (`{who}'s`) takes the current phrase inside and offers new heads: *your uncle* → *your uncle's dentist*. A phrase led by a filled relation slot takes no determiner of its own, and a nested phrase's trailing `'s` sticks to it |
 | add | an empty optional slot that doesn't nest |
-| flip | the opposite mood (`v`) at the nearest tier, on the phrase's mood word |
+| flip | the opposite mood (`v`) on the phrase's mood word: a word nesting the same card first, then the nearest tier, then a shared tag |
 | sound | the same first letter as a neighboring word or card, or another word in the phrase matched to this one |
 
 Every candidate passes constraints, `needs` and `maxDepth`, like any other word.
@@ -89,6 +92,55 @@ built-in people for exactly this), else the slot's first word. Bank words saved 
 pass `checkEntry`, since it names one of the whose words. A space's or library's fork of the old
 Story Bits keeps its old `who` shape and reads as before. Fixtures in `test/fixtures/old-links.json`
 were made by the engine before the change and must never be regenerated.
+
+### Decision: what happened and how they feel are frames (2026-10-15)
+
+The event and the feeling were frozen chunks (*got banned from a Costco*, *pretending it doesn't
+bother him*): you could swap the whole thing or step its adverb, nothing inside. Now both cards
+have parts that move on their own:
+
+- **what happened** is `[adverb] event [detail]`, and the event pool also holds **frames**: a
+  verb with one hole that nests a card. *lost {thing}*, *won {thing} in a raffle*, *got banned
+  from {where}*, *eloped with {who}*, *sued {who}*, *got custody of {thing}*. The object is a whole
+  phrase of that card, tuned inside (*lost a dog* → *lost a damp dog*). Frames carry mood and
+  families (*gain, loss, legal, romance, achievement, travel, family-news, feud, home, work*), so
+  Sideways swaps the verb and keeps the object (*lost a dog* → *broke a dog*) and Flip finds the
+  opposite-mood frame around the same hole (*lost a dog* → *won a dog*). One hole per frame; a frame
+  with words after its hole (*found {thing} in the attic*) keeps the object short.
+- **how they feel** is `[intensity] emotion [about] [coping]`. New emotions are adjectives
+  (`adj`, so they take an intensity: *quietly furious*) flagged `about: true`; the new `about`
+  slot (`needs: "about"`) says what it's about (*about it*, *about {thing}*, *about {who}*), and
+  only after an emotion that doesn't already say (*excited about it* takes none). The trailing slot
+  is now named *coping*: what they're doing about it (*and {has} started a podcast*, *and blame{s}
+  {who}*), with the old twists (*but won't admit it*) still in it. Pronoun tokens keep agreement:
+  *and they are quietly furious about a dog and have started a podcast*.
+- `needs` was a slot key or `"adj"`; it can now name any flag the head word carries
+  (checkGrammar requires some head word to carry it, so a typo still fails).
+
+The old frozen events and the mixed feeling list stay where they were (append-only: links pin
+indices) and the frames sit after them in the same pools, so old links, the shelf and drafts read
+exactly as before (`test/fixtures/pre-frames.json`, made by the engine at 74cadb6; never
+regenerate it). New shuffles draw from both.
+
+### Grammar-text fixes (2026-10-15)
+
+From the phone QA sweep (docs/qa-phone.md #8–#10). Agreement bugs are fixed in place, since the
+broken text was never what a piece meant:
+
+- Just-so rivals' clauses say *that* (*the mountain that had been drinking*); *that* suits a river
+  or a fox as well as a person. Hinge's *a goose that believes in me* likewise.
+- *the stars* is retired from the rivals (every rival line reads it as one: *the stars still sends
+  a card*); *the North Star* joins. Hinge's opener *Is {answer} single?* (*Is sunsets single?*)
+  became *Do you think {answer} would go out with me?*.
+- Small Poems' *weather* is `mass: true`: *Weather, and then not.*, not *A weather*.
+- Story Bits' *Greyhound bus at 3 a.m.* became *…at 3 in the morning* (a beat's full stop made
+  *a.m..*).
+- Part labels name nested phrases by their card's label (*Thing*), not *thing, inside*; a nested
+  label that would overlap another hides; labels can't be selected into copied text. The Show
+  parts note names the grammar's own cards.
+- The empty shelf's *(k)* shortcut hint is hidden with the key on touch screens, so it no longer
+  reads *Keep this creature ()*. (The "blank" Keep entry in the More menu was the closed menu's
+  `innerText`; its text was there.)
 
 ### Word families: `tags`
 

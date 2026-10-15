@@ -12,6 +12,8 @@ Newcomer walk-through of the live site at https://reeswrites.com/story-bits/ in 
 
 ## Findings
 
+Fixed since: #8, #9 and #10 (2026-10-15; see "Grammar-text fixes" in docs/design.md).
+
 | # | Sev | Where | What happened | Steps | Screenshot |
 |---|-----|-------|---------------|-------|-----------|
 | 1 | annoying | Rules drawer | The drawer opens inline, ~790px tall (more than the whole 812px screen). The piece is pushed below the fold, so changing form, length or dial shows no result until you close the drawer or scroll past it. Only Shuffle (fixed bar) is in reach. | Tap **Rules**, tap a form or the `+` on Length. | Drawer fills the screen from "Grammar" down to "Incongruity"; the piece card is not on screen. |

@@ -437,7 +437,7 @@ mark { color: inherit; padding: 0 .15em; border-radius: 3px; -webkit-box-decorat
 .actions .primary:hover { background: color-mix(in srgb, var(--accent) 85%, black); }
 .ghost { border-style: dashed !important; }
 kbd { border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; font-size: 10px; color: inherit; }
-@media (hover: none) { kbd { display: none; } }
+@media (hover: none) { kbd, .kbd-hint { display: none; } }
 button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 .cast-wrap { margin-top: 56px; }
@@ -787,6 +787,7 @@ details[open] > summary .caret { transform: rotate(90deg); }
   font: 500 9.5px/1.4 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
   color: var(--ink-2); background: var(--card); border-radius: 3px; padding: 0 4px;
   opacity: 0; transition: opacity .6s ease; font-style: normal; font-weight: 500;
+  user-select: none; -webkit-user-select: none;
 }
 .ph.nested > .part-label { text-transform: none; letter-spacing: .02em; }
 body.show-parts #bit { line-height: 1.95; }
