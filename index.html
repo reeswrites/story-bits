@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Story Bits</title>
-  <meta name="description" content="Something happened to someone, and they feel some way about it. A mad-lib story generator you tune word by word.">
+  <meta name="description" content="Write with a grammar, word by word: tune stories and poems from plain to strange, fork and share grammars, and jam with friends.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='6' width='24' height='20' rx='3' fill='%23e8d9b8' stroke='%232b2118' stroke-width='2'/><path d='M9 13h14M9 18h9' stroke='%23c4472d' stroke-width='2.5' stroke-linecap='round'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +15,7 @@
   <main>
     <header class="masthead">
       <h1>Story Bits</h1>
-      <p class="lede">Something happened to someone, and they feel some way about it. You don't have to guess how they feel. That's the point. Tap any word to tune it, from plain to strange. Things can hide inside other things, and you can add words of your own.</p>
+      <p class="lede">Write with a grammar, word by word. Tap any word or line to step it from plain to strange, swap in your own, or fork the grammar itself. Start with a funny story or a small poem. It's yours alone, in this browser, until you open a jam.</p>
     </header>
 
     <section class="controls" aria-label="Controls">
@@ -67,10 +67,10 @@
         <button id="live" class="ghost live-btn" hidden>Start a jam</button>
       </div>
       <div id="challenge-panel" class="challenge-panel" hidden>
-        <p class="cp-lede">Everyone gets this exact story and the same few moves to make it theirs. Then you put the versions side by side and vote.</p>
+        <p class="cp-lede">No server needed: everyone gets this exact piece by link, makes it theirs (with a move limit if you like), and sends their version back. Then you put the versions side by side. For a live session, start a jam instead.</p>
         <div class="cp-row">
           <fieldset class="bf-field"><legend class="dial-label">Moves each</legend>
-            <span class="seg"><label><input type="radio" name="ch-n" value="1">1</label><label><input type="radio" name="ch-n" value="2">2</label><label><input type="radio" name="ch-n" value="3" checked>3</label><label><input type="radio" name="ch-n" value="4">4</label><label><input type="radio" name="ch-n" value="5">5</label></span>
+            <span class="seg"><label><input type="radio" name="ch-n" value="0">any</label><label><input type="radio" name="ch-n" value="1">1</label><label><input type="radio" name="ch-n" value="2">2</label><label><input type="radio" name="ch-n" value="3" checked>3</label><label><input type="radio" name="ch-n" value="4">4</label><label><input type="radio" name="ch-n" value="5">5</label></span>
           </fieldset>
           <label class="bf-field"><span class="dial-label">Your name</span><input id="ch-name" maxlength="24" placeholder="optional"></label>
         </div>
@@ -83,7 +83,7 @@
 
     <section id="compare" class="compare" aria-labelledby="cmp-h" hidden>
       <div class="bank-head"><h2 id="cmp-h">Compare</h2><button id="cmp-close" class="pk-x" aria-label="Close compare">✕</button></div>
-      <p class="help">Same start, different moves. Changed words and beats are highlighted. Clap for your favorites, out loud or here.</p>
+      <p class="help">Same start, different versions. Changed words and beats are highlighted. Clap for your favorites, out loud or here.</p>
       <div class="cmp-add">
         <textarea id="cmp-paste" rows="2" placeholder="Paste everyone's version links here (a whole group-chat dump works)"></textarea>
         <div class="cp-row">
@@ -98,7 +98,7 @@
 
     <section class="bank-wrap" aria-labelledby="bank-h">
       <div class="bank-head"><h2 id="bank-h">Word bank</h2><span id="bank-count" class="count"></span></div>
-      <p class="help">Your own words. They turn up in shuffles and in the word picker, and they travel inside any story link you share.</p>
+      <p class="help">Your own words for the grammar in use. They turn up in shuffles and in the word picker, and they travel inside any link you share.</p>
       <form id="bank-form" class="bank-form" autocomplete="off">
         <label class="bf-field"><span class="dial-label">Slot</span><select id="bf-slot"></select></label>
         <label class="bf-field bf-text"><span class="dial-label">Word</span><input id="bf-text" maxlength="60" placeholder="type a word or phrase"></label>
@@ -140,7 +140,7 @@
     </section>
 
     <footer>
-      <p>Funny stories are things that happened that don't quite fit, landing somewhere it's safe to laugh. Turn up the dial to widen the gap.</p>
+      <p>Story Bits began with one rule for funny stories: things that happened that don't quite fit, landing somewhere it's safe to laugh. That rule is now one grammar among others. Nothing here needs an account; your grammars, words and cast stay in this browser.</p>
     </footer>
   </main>
   <div id="picker" class="picker" role="dialog" aria-label="Tune a word" hidden></div>

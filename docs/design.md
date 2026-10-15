@@ -1,7 +1,6 @@
 # Design: grammars, library, jams
 
-Story Bits started as a humor generator. It is becoming an instrument for writing with
-grammars: you tune a piece word by word, alone, in your browser; when you want company, you open
+Story Bits started as a humor generator. It is now an instrument for writing with grammars: you tune a piece word by word, alone, in your browser; when you want company, you open
 a jam. This note records the model and the decisions behind it.
 
 ## Principles
@@ -53,8 +52,9 @@ An optional shared session, served by the room server (`party/`, partyserver on 
 
 - **Roles**, like a shared doc: view, comment, edit. Each role has its own invite link.
 - **Together**: one shared piece. Editors tune words, beats, the form, or the grammar itself, live;
-  everyone sees who's on which word. Edits are small operations (set the word at a path, set a
-  beat), so two people on different words never collide; the same word is last-write-wins.
+  everyone sees who's on which word. Edits go out as small patches, one per card, per beat line, or
+  per setting, so two people on different cards never collide; within one card, last write wins.
+  Switching the grammar sends the whole piece.
 - **Comments** anchor to a word or a beat (the same `card|path` / `beat|key` addresses links use),
   so feedback sits on the exact thing it's about.
 - **Workshop**: everyone tunes their own copy from the same start, then the copies go side by side
@@ -69,3 +69,12 @@ claps, and every client checks what it receives with the same parsers it uses fo
 In your browser: grammars you've added, your word bank, your cast. In a jam: the room's piece,
 grammar, comments and rounds, in that room's storage in our Cloudflare account; nicknames only; a
 room deletes itself after 30 days without activity; the host can wipe it sooner.
+
+## Status (2026-10-15)
+
+Built: grammar documents and checks (`grammar.js`), Story Bits and Small Poems, constraints
+(lipogram, alliteration, syllable cap, closed), the library (fork, edit, share, import, suggest),
+jams with roles, together mode, presence, comments, and workshop rounds with optional move limits,
+claps and critique notes. Packs carry grammars, words and forms.
+
+Next: a data API for publishing and browsing grammars and packs; lore that carries across jams.

@@ -1,89 +1,94 @@
 # Story Bits
 
-**Something happened to someone, and they feel some way about it.** A mad-lib story generator you tune word by word.
+**Write with a grammar, word by word.** Tune a piece from plain to strange, one word or line at a time, in a grammar you can swap, fork and share. Alone and local-first by default; open a jam when you want company.
 
 > your uncle just got his boating license and he's really excited about it
 
-Live: https://reeswrites.com/story-bits/
+Live: https://reeswrites.com/story-bits/ · Design notes: [docs/design.md](docs/design.md)
 
-## How it works
+Story Bits began with one rule for funny stories, from a note: *something happened to someone, and they feel some way about it*, and a funny story is an incongruity that lands somewhere it's safe to laugh. That rule is now one grammar. Poems are another. Make your own.
 
-- **Tune in the sentence.** Every word in the bit and the story is a button. Tap one and the picker opens:
-  - **‹ ›** (or ← →) step it from plain to strange, live.
-  - The full list, grouped *plausible / odd / absurd*.
-  - **Surprise me**, **Pin** (shuffles keep pinned words), **Remove** (optional words).
-  - **Your own…**: type any word; it joins your word bank.
-- **Ghost slots.** With a word selected, dashed `+ adverb` / `+ clause` chips appear exactly where an optional word can go in that phrase. Tap one to fill it.
-- **Cards.** The colored chips above the bit (*who, what happened, how they feel, where, thing*) reroll one card at a time, keeping pins. The bit reads "*who* *what happened*, and they're *how they feel*."
-- **Length.** Start with just the bit and add a stanza at a time, up to five. Earlier lines stay put, so the story grows instead of rerolling. From two stanzas on, it always lands.
-- **Incongruity, in pairs.** Each card brings a pair that can fit or clash: event ↔ feeling (mood), place ↔ event and thing ↔ place (register). *Plausible* = none clash, *Odd* = only the feeling, *Absurd* = all. Then the story lands somewhere safe, because a funny story is an incongruity that resolves into something it's OK to laugh at.
-- **Nesting.** Some words hold a whole thing (*blames …*, *run by …*, *that once swallowed …*), tunable the same way, up to two levels down (`MAX_DEPTH`). Hovering a word outlines the phrase it belongs to.
-- **Beats.** The rest of each sentence is tunable too: tap the plain part of a story sentence to step that beat (*the turn*, *the landing*…) plain to strange, pin it, or send it back to the dice. Forms live in `FORMS` in `data.js`.
-- **Forms.** The same bit can be told as *The bit*, *Local news*, *Wedding toast* or *Complaint to the manager*. Each form has its own beats and lengths, and every form lands: `checkForm` in `grammar.js` rejects any stanza whose last paragraph has no landing beat.
-- **Today's bit.** One story per day (UTC), the same for everyone: generated from the date alone (no personal word banks), forms rotating daily, played as a 3-move challenge. `#daily` links straight to it.
-- **Challenge friends.** *Challenge friends* makes a link: everyone gets the same story and the same few moves (a move is any word or beat that differs from the start; putting it back refunds it). Each player copies their version link back to the group; *Compare* takes a pasted pile of links (a group-chat dump works), shows every version against the original with changes highlighted, and lets the room clap-vote. *Copy compare link* shares the whole set. No server: every copy is a link (`#c=` challenge, `#p=` in progress, `#s=` finished, `#cmp=` a set).
-- **Play live.** *Play live* opens a room (a short code like `RUREH`; share the invite link). The host sets up a story and starts a round; everyone tunes their own copy on their own phone and sends it; copies stay hidden until the host reveals them; then everyone gets 5 claps (never for their own) and the host shows results. Rounds are stored in the room, so it keeps a history of winners.
-- **The cast.** Keep a bit and its character joins your cast; tell more stories about them and they become someone.
-- **Links.** The URL carries every word (yours included), the form, tuned beats, the dial, the length, the seed and your pins. Links are versioned (`v: 2`); older links still load.
+## Writing alone
 
-## The grammar
+- **Tap any word** to open it: **‹ ›** (or ← →) step it plain → strange, live; the full list grouped by register; *Surprise me*, *Pin* (shuffles keep it), *Remove*; or type your own.
+- **Tap the rest of a sentence** to tune that line (the beat) the same way.
+- **Ghost slots**: with a word selected, dashed `+ adverb` / `+ clause` chips show where an optional word can go.
+- **Nesting**: some words hold a whole phrase of another card (*blames …*, *brought back from …*), tunable inside. Hover a word to see which phrase it belongs to.
+- **Form and length**: each grammar has forms (a funny story as *The bit*, *Local news*, *Wedding toast*, *Complaint to the manager*; a poem as *Couplets* or *Refrain*). Grow the piece a stanza at a time; earlier lines stay put.
+- **The dial** sets how much the parts disagree. What disagreement means is the grammar's call (below).
+- **Word bank**: your own words, per grammar, kept in this browser. They show up in shuffles and the picker and travel inside links. *Copy pack link* shares them.
+- **The cast**: in grammars with characters, keep one and tell more stories about them.
+- **Links** carry the whole piece: every word (yours too), the grammar (inline if it's yours), form, tuned lines, dial, length. Older links still open.
 
-`data.js` (`SCHEMAS`) is a small generative grammar. Each card is a phrase of ordered slots:
+Nothing here needs an account, and nothing leaves your browser unless you share a link or open a jam.
 
-| card | slots | e.g. |
-|---|---|---|
-| who | `[descriptor] person` | *your recently retired uncle* |
-| what happened | `[adverb] event [detail]` | *accidentally got banned from a Costco on live local television* |
-| how they feel | `[intensity] feeling [aftertaste]` | *quietly furious and blames …* |
-| where | `[intensity] [quality] place [clause]` | *a very haunted Olive Garden two towns over* |
-| thing | `[intensity] [quality] noun [clause]` | *a slightly wet dog that has a lawyer* |
+## Grammars
 
-Words carry features: a register (tier 0–2) on every word, a mood on events and feelings, a determiner on people and places, pronouns on people. The rules that keep sentences well-formed are stated, not hand-tuned:
+A grammar is one JSON document ([docs/design.md](docs/design.md) has the full model):
 
-- a slot with `needs` only appears alongside what it needs (no *very* without a quality; no *really* before *drafting a memoir*);
-- a thing nested inside a noun's clause takes no clause of its own, so every trailing clause belongs to exactly one noun;
-- things nest at most `MAX_DEPTH` deep; a/an and pronoun agreement are computed.
+| part | what it is |
+|---|---|
+| `cards` | the pieces of a piece: *who, what happened, how they feel, where, thing*; or *image, motion, place, time* |
+| `schemas` | each card's ordered word slots, like `[intensity] [quality] noun [clause]`, with word pools; slot flags for mood, determiners, pronouns, trailing clauses |
+| `line` | the headline template: `{who} {what}, and {p} {is} {feel}.` |
+| `forms` | shapes of a telling: stanzas of beats; each beat line tiered plain → strange |
+| `rules` | what the dial clashes (pairs of cards, on **mood**, **register** or **sound**), whether forms must **land**, and **constraints** |
 
-`grammar.js` states what each slot accepts (`SLOT_INFO`: a test frame like *"a ___ dog"* and a hint) and the check every word must pass (`checkEntry`). The page and the pack tooling share it, so a word that's valid in your bank is valid for everyone.
+Built in:
 
-The grammar guarantees well-formed, not funny. Funny is the dial's job, and the words'.
+- **Story Bits**: the humor grammar. Event ↔ feeling clash on mood; place ↔ event and thing ↔ place on register; every form lands.
+- **Small Poems**: an image, what it does, where, when. Image ↔ place clash on sound (alliteration fits), motion ↔ time on register. Nothing has to land. Forms render line by line; *Refrain* repeats its line like a ghazal.
 
-## Word bank
+**Constraints**, Oulipo-style, filter what a grammar offers, so it can't produce a word that breaks them: a **lipogram** (no letter *e*, covering words, determiners and lines), **alliteration** (every word starts with a letter), **short words** (a syllable cap), or **closed** (no word bank).
 
-- **Yours.** Add words in the *Word bank* section (with a live preview in the slot's frame) or by typing your own in any picker. They live in your browser, show up in shuffles and pickers, and travel inline inside story links.
-- **Share a pack.** *Copy pack link* gives a `#pack=…` URL. Opening it adds those words to the opener's bank.
-- **Grow the shared bank.** *Suggest for everyone* opens a pre-filled GitHub issue with your words as JSON. When a maintainer adds the `accepted-pack` label, [`word-pack.yml`](.github/workflows/word-pack.yml) runs [`tools/accept-pack.mjs`](tools/accept-pack.mjs): it checks every word against the grammar, drops duplicates, writes `packs/issue-<n>.json`, adds it to `packs/index.json`, and opens a pull request. Merge it and the words ship to everyone.
+The grammar makes pieces well-formed. Whether one works is up to the dial, the words, and you. `grammar.js` holds the checks (`checkEntry`, `checkForm`, `checkGrammar`) the page, the library, links and the pack tool all share.
 
-  Packs can carry **forms** too (`"forms": { "slug": { name, stanzas, beats } }`, same shape as `FORMS` in `data.js`). The tool runs `checkForm` on each and never reuses a taken slug, so links to a form keep meaning the same thing.
+### The library
 
-  Packs load in `packs/index.json` order and are appended to the pools, so keep that list append-only; old links depend on word positions.
+Under **Grammars** on the page: **Fork** any grammar into your library, **Edit** your copy (basics, words per slot, beat lines, constraints, the dial, the landing rule, or the whole thing as JSON; every edit is checked before it saves), **Copy link** to share it (the link offers it to whoever opens it, never adds it silently), or **Suggest** it for everyone.
 
-  The workflow needs *Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests*.
+## Jams
 
-## Live rooms
+Open one with **Start a jam**. A jam is a shared session on the room server; everything else stays local.
 
-`party/` is the room server: one [partyserver](https://github.com/cloudflare/partykit/tree/main/packages/partyserver) Durable Object per room code on Cloudflare Workers (partyserver is Cloudflare's successor to PartyKit). The room is the single authority on phase, host and claps. It never interprets stories: challenges and copies are size-capped JSON, and every client checks them with the same parsers it uses for links.
+- **Roles**, like a shared doc: the jam bar has an **edit link**, a **comment link** and a **view link**.
+- **Together**: one shared piece. Editors tune it live (each change goes out per card and per line, so two people on different cards never collide); everyone sees who's looking at which word. Comments anchor to a word or a line, with the quoted text, and can be resolved.
+- **Workshop**: the host starts everyone from the same piece; writers tune their own copies; the host reveals them side by side, changes highlighted, for critique: notes on each copy, and claps if the host turned them on. A move limit (or none) is the host's call too. With a limit and claps it's a game; without, it's a writers' workshop.
 
-**What's stored**, in the room's own storage in this Cloudflare account: the current round, and up to 50 finished rounds (the challenge, each copy with its nickname and clap count). No accounts, emails or IPs. A room deletes itself after 30 days without activity, and the host can wipe its history from the room bar. Only pages listed in `ALLOWED_ORIGINS` (plus localhost) can open a room.
+**Pass it around** is the same workshop without a server: a link everyone opens, versions sent back as links, compared on one page.
 
-```bash
-cd party && npm install
-npm run dev        # local rooms on :8799 (the page uses them when served from localhost)
-npm test           # end-to-end: a full round, claps, history, host handoff, origin check
-npm run deploy     # then set ROOMS_PROD in app.js to the printed workers.dev host
-```
+### What a jam stores
+
+In the jam's own storage on Cloudflare: the shared piece, comments (with nicknames), and finished workshop rounds (the start, each copy, notes, claps; up to 50). No accounts, emails or IPs. A jam deletes itself after 30 days without activity, and the host can wipe its history and comments. Only allowed pages can connect.
+
+## Growing the shared bank
+
+**Suggest for everyone** (on your word bank or a grammar) opens a pre-filled GitHub issue. When a maintainer adds the `accepted-pack` label, [`word-pack.yml`](.github/workflows/word-pack.yml) runs [`tools/accept-pack.mjs`](tools/accept-pack.mjs): it checks every grammar, word and form with the same checks the page uses, skips anything taken, writes `packs/issue-<n>.json`, adds it to `packs/index.json`, and opens a pull request. Merge it and it ships.
+
+- Packs can hold `grammars`, `words` (each with its grammar `g`), and `forms` (for `pack.grammar`).
+- `packs/index.json` is append-only: old links depend on word positions in built-in and shared grammars.
+- The workflow needs *Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests*.
 
 ### Later
 
-- A small data API for packs (publish, browse, subscribe), so sharing doesn't need a long URL or an issue.
-- Votes on suggested words, and per-pack toggles in the picker.
+- A data API for packs and grammars (publish, browse, subscribe), so sharing doesn't need long links or issues.
+- Lore across jams: a jam that remembers its cast and running bits.
 
-## Run locally
+## Run it
 
-No build step, no tracking. Plain HTML/CSS/JS.
+No build step. Plain HTML/CSS/JS: `data.js` (built-in grammars), `grammar.js` (checks), `library.js`, `jam.js`, `app.js`.
 
 ```bash
 python3 -m http.server 4290
+```
+
+Jams run on `party/`, a [partyserver](https://github.com/cloudflare/partykit/tree/main/packages/partyserver) Durable Object (Cloudflare's successor to PartyKit):
+
+```bash
+cd party && npm install
+npm run dev        # local jams on :8799 (the page uses them when served from localhost)
+npm test           # end to end: roles, together, comments, workshop, history, origin check
+npm run deploy     # then set ROOMS_PROD in jam.js to the printed workers.dev host
 ```
 
 Test a pack locally:

@@ -1351,7 +1351,7 @@ document.addEventListener("click", (e) => {
   else if (t.id === "challenge") { const pnl = $("#challenge-panel"); pnl.hidden = !pnl.hidden; if (!pnl.hidden) $("#ch-name").focus(); }
   else if (t.id === "ch-copy" || t.id === "ch-play") {
     const c = { h: cleanName($("#ch-name").value), n: +document.querySelector('[name="ch-n"]:checked').value, s: fixedSnapshot() };
-    if (t.id === "ch-copy") copy(linkTo("c", c), `Challenge copied. Everyone gets the same bit and ${c.n} move${c.n === 1 ? "" : "s"}.`);
+    if (t.id === "ch-copy") copy(linkTo("c", c), `Link copied. Everyone gets the same piece${c.n ? ` and ${c.n} move${c.n === 1 ? "" : "s"}` : ", no move limit"}.`);
     else startGame(parseChallenge(c), undefined, c.h);
   }
   else if (t.id === "gb-submit") copy(linkTo("s", playPayload()), "Your version is copied. Paste it in the group chat.");
