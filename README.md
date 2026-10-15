@@ -4,7 +4,7 @@ Five things, mad-lib style: **something happened to someone, and they feel some 
 
 > your uncle just got his boating license and he's really excited about it
 
-Live: https://reeswrites.github.io/story-bits/
+Live: https://reeswrites.com/story-bits/
 
 ## How it works
 
