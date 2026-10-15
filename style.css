@@ -103,6 +103,28 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
   cursor: pointer;
 }
 .card-body:disabled { cursor: default; }
+.words { cursor: default; display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 0 .28em; }
+.word {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0 1px; margin: 0;
+  cursor: pointer; text-decoration: underline dotted color-mix(in srgb, var(--ink) 45%, transparent);
+  text-underline-offset: 4px; border-radius: 3px;
+}
+.word:hover:not(:disabled) { background: color-mix(in srgb, var(--slot) 55%, transparent); text-decoration-style: solid; }
+.word:disabled { cursor: default; text-decoration: none; }
+.w-i, .w-c { font-style: italic; }
+.reroll-all {
+  border: 0; background: none; color: var(--ink-2); cursor: pointer; font-size: 15px;
+  padding: 0 4px; vertical-align: 1px;
+}
+.reroll-all:hover:not(:disabled) { color: var(--ink); }
+.reroll-all:disabled { display: none; }
+.word-steps { display: inline-flex; align-items: center; gap: 2px; }
+.mini {
+  width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ink-2);
+  background: none; color: var(--ink); font: 500 14px/1 "IBM Plex Mono", monospace; cursor: pointer;
+}
+.mini:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+.mini:disabled { opacity: .3; cursor: default; }
 .card.locked { outline: 2px solid var(--ink); outline-offset: -2px; }
 .lock {
   border: 0; background: none; color: var(--ink-2); cursor: pointer;

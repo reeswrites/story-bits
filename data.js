@@ -107,26 +107,47 @@ const WHERE = [
   { t: "a library that only lends out ladders", tier: 2 },
 ];
 
-const THING = [
-  { t: "a folding chair", tier: 0 },
-  { t: "a casserole dish that wasn't returned", tier: 0 },
-  { t: "a laminated map", tier: 0 },
-  { t: "a novelty fish that sings", tier: 1 },
-  { t: "a bucket hat", tier: 0 },
-  { t: "an extremely loud wind chime", tier: 0 },
-  { t: "a commemorative spoon", tier: 1 },
-  { t: "a jar of pickled eggs", tier: 1 },
-  { t: "a ventriloquist dummy named Gerald", tier: 2 },
-  { t: "a rotary phone that still rings", tier: 1 },
-  { t: "an unopened letter from 1994", tier: 1 },
-  { t: "a trophy for a sport that doesn't exist", tier: 2 },
-  { t: "a goose (a different goose)", tier: 2 },
-  { t: "a used kayak", tier: 0 },
-  { t: "a hundred feet of bubble wrap", tier: 1 },
-  { t: "a crown from Burger King", tier: 1 },
-  { t: "an oil painting of a horse in a suit", tier: 2 },
-  { t: "a garden gnome with a secret", tier: 2 },
-];
+// The thing is built from words, each tunable on its own:
+//   [intensity] [quality] noun [clause]  ->  "a slightly wet dog that has a lawyer"
+// Intensity only appears with a quality (it modifies the quality, not the noun).
+// The thing's register is its strangest word, so one absurd word is enough to clash.
+const THING_WORDS = {
+  intensity: [
+    { t: "slightly", tier: 0 }, { t: "extremely", tier: 0 }, { t: "mostly", tier: 0 },
+    { t: "surprisingly", tier: 0 }, { t: "very", tier: 0 },
+    { t: "suspiciously", tier: 1 }, { t: "aggressively", tier: 1 }, { t: "technically", tier: 1 },
+    { t: "legally", tier: 2 }, { t: "spiritually", tier: 2 }, { t: "emotionally", tier: 2 },
+  ],
+  quality: [
+    { t: "loud", tier: 0 }, { t: "quiet", tier: 0 }, { t: "wet", tier: 0 }, { t: "damp", tier: 0 },
+    { t: "tiny", tier: 0 }, { t: "enormous", tier: 0 }, { t: "sticky", tier: 0 },
+    { t: "laminated", tier: 0 }, { t: "borrowed", tier: 0 }, { t: "monogrammed", tier: 0 },
+    { t: "glow-in-the-dark", tier: 1 }, { t: "haunted", tier: 1 }, { t: "inherited", tier: 1 },
+    { t: "judgmental", tier: 1 }, { t: "singing", tier: 1 }, { t: "commemorative", tier: 1 },
+    { t: "sentient", tier: 2 }, { t: "bilingual", tier: 2 }, { t: "recently divorced", tier: 2 },
+    { t: "tax-exempt", tier: 2 }, { t: "ordained", tier: 2 },
+  ],
+  noun: [
+    { t: "folding chair", tier: 0 }, { t: "casserole dish", tier: 0 }, { t: "wind chime", tier: 0 },
+    { t: "bucket hat", tier: 0 }, { t: "kayak", tier: 0 }, { t: "dog", tier: 0 },
+    { t: "lawn flamingo", tier: 0 }, { t: "fondue set", tier: 0 }, { t: "road map", tier: 0 },
+    { t: "accordion", tier: 0 },
+    { t: "novelty fish", tier: 1 }, { t: "spoon", tier: 1 }, { t: "jar of pickled eggs", tier: 1 },
+    { t: "rotary phone", tier: 1 }, { t: "Burger King crown", tier: 1 }, { t: "mime costume", tier: 1 },
+    { t: "ventriloquist dummy named Gerald", tier: 2 }, { t: "goose (a different goose)", tier: 2 },
+    { t: "oil painting of a horse in a suit", tier: 2 }, { t: "garden gnome", tier: 2 },
+    { t: "trophy for a sport that doesn't exist", tier: 2 },
+  ],
+  clause: [
+    { t: "that was never returned", tier: 0 }, { t: "from the garage", tier: 0 },
+    { t: "nobody will admit to owning", tier: 0 },
+    { t: "that still rings at night", tier: 1 }, { t: "from 1994", tier: 1 }, { t: "with a secret", tier: 1 },
+    { t: "that keeps showing up in photos", tier: 2 }, { t: "that has a lawyer", tier: 2 },
+    { t: "that remembers everything", tier: 2 },
+  ],
+};
+// Order words are added with "+" and removed with "−".
+const THING_GROW = ["q", "i", "c"];
 
 // Story beats. Tokens: {Who}/{who} name, {P}/{p} pronoun, {o}, {pos}, {is}, {has}, {was},
 // {s} (verb ending: "keep{s}"), {where}, {thing}. Keyed by feeling valence where that matters.
