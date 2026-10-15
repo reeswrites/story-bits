@@ -47,7 +47,7 @@ function slotOffers(g, card, names = {}) {
   const prev = parts[i - 1], next = parts[i + 1];
   if (!(prev && prev.opt && !prev.relation)) out.push({ key: "describe", label: `Add a describing word before ‘${headText}’`, position: i, def: { name: named("describing word") }, needsWord: true });
   if (!(next && next.opt)) out.push({ key: "detail", label: `Add a detail after ‘${headText}’`, position: i + 1, def: { name: named("detail") }, needsWord: true });
-  if (g.maxDepth >= 1 && !parts.some((p) => p.relation) && (head.det || g.schemas[card].article)) {
+  if (g.maxDepth >= 1 && !parts.some((p) => p.relation) && (head.det || g.schemas[card].article || parts.some((p) => p.determiner))) {
     out.push({ key: "relation", label: `Add a relation: ‘${names.phrase || headText}’s …’`, position: 0, def: { name: named("relation"), relation: true, pool: [{ t: `{${card}}'s`, tier: 0 }] }, needsWord: false });
   }
   return out;

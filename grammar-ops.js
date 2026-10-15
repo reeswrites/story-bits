@@ -17,11 +17,11 @@
   const copy = (x) => JSON.parse(JSON.stringify(x));
   const fail = (error) => ({ error });
   const q = (t) => `'${t}'`;
-  // Free word tags (["family", "work"]): what sideways prefers to share. Short lowercase labels.
-  const TAGS_MAX = 8;
+  // Free word tags (word families: ["family", "work"]), what sideways prefers to share, as
+  // checkGrammar takes them: up to TAGS_MAX short lowercase names ("in laws" → "in-laws").
   function cleanTags(list) {
     if (!Array.isArray(list)) throw new Error("tags are a list of short words");
-    const out = [...new Set(list.map((x) => cleanWord(x).toLowerCase().replace(/[^a-z0-9 '-]/g, "").trim().slice(0, 24)).filter(Boolean))];
+    const out = [...new Set(list.map((x) => cleanWord(x).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z-]/g, "").replace(/^[^a-z]+/, "").slice(0, 16).replace(/-+$/, "")).filter(Boolean))];
     if (out.length > TAGS_MAX) throw new Error(`up to ${TAGS_MAX} tags a word`);
     return out;
   }

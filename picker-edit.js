@@ -74,7 +74,9 @@ function grammarEditHtml(at) {
   if (!step) ge.forkedFrom = "";
   const note = step ? `<p class="ge-note" role="status">${ge.forkedFrom ? `<b>You're now editing your own copy of ${esc(ge.forkedFrom)}.</b> ` : ""}${esc(cap(step.label))}. <button class="ge-undo" data-ge="undo" ${geKey("undo")}>Undo</button></p>` : "";
   const err = ge.err ? `<p class="bf-error ge-err" role="alert">${esc(cap(ge.err))}.</p>` : "";
-  const body = ge.tab === "word" ? wordTabHtml(v) : ge.tab === "slots" ? slotsTabHtml(v, at) : wordsTabHtml(v, at);
+  // A relation slot's word is the nested phrase itself ({who}'s): nothing to add or tag there.
+  const nest = partOf(at.schema, at.k).relation && ge.tab !== "slots" ? `<p class="ge-help">The ${esc(v.slot)} slot holds a whole other phrase: whose ${esc(names.head || "one")} this is. Tune that phrase, or change the slots.</p>` : "";
+  const body = nest || (ge.tab === "word" ? wordTabHtml(v) : ge.tab === "slots" ? slotsTabHtml(v, at) : wordsTabHtml(v, at));
   const yours = library[G.id] ? "" : `<p class="ge-help">Changes go into your own copy of ${esc(G.name)}; the original stays as it is.</p>`;
   return `<details class="pk-edit"${ge.open ? " open" : ""}>
       <summary ${geKey("summary")}>Change the grammar here <span class="pv-of">${esc(v.where)}</span></summary>
@@ -127,10 +129,10 @@ function wordTabHtml(v) {
       <div class="ge-field"><span class="dial-label">Tags</span>
         <span class="ge-chips">${w.tags.map((t) => `<span class="ge-chip on">${esc(t)}<button class="ge-x" data-ge="untag" data-tag="${esc(t)}" ${geKey(`untag-${t}`)} aria-label="Remove tag ${esc(t)}">✕</button></span>`).join("") || `<span class="ge-help">none yet</span>`}</span>
       </div>
-      <form class="ge-inline" data-ge-form="tag" autocomplete="off">
+      ${w.tags.length >= TAGS_MAX ? "" : `<form class="ge-inline" data-ge-form="tag" autocomplete="off">
         <input name="ge-tag" maxlength="24" value="${esc(ge.tagDraft)}" placeholder="a tag, like family" aria-label="Add a tag" ${geKey("ge-tag")}>
         <button type="submit" ${geKey("tag-add")}>Tag</button>
-      </form>
+      </form>`}
       <p class="ge-help">Sideways moves prefer words that share a tag.</p>
     </div>`;
 }
