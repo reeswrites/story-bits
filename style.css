@@ -359,3 +359,7 @@ body.in-game #challenge, body.in-game #challenge-panel { display: none !importan
 .clap { font: 500 16px "IBM Plex Mono", monospace; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; }
 .clap:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .crown { font: 500 11px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+
+.forms-row { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.forms button { font-size: 13px; }
+body.in-game #daily { display: none !important; }

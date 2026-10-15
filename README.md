@@ -19,6 +19,8 @@ Live: https://reeswrites.com/story-bits/
 - **Incongruity, in pairs.** Each card brings a pair that can fit or clash: event ↔ feeling (mood), place ↔ event and thing ↔ place (register). *Plausible* = none clash, *Odd* = only the feeling, *Absurd* = all. Then the story lands somewhere safe, because a funny story is an incongruity that resolves into something it's OK to laugh at.
 - **Nesting.** Some words hold a whole thing (*blames …*, *run by …*, *that once swallowed …*), tunable the same way, up to two levels down (`MAX_DEPTH`). Hovering a word outlines the phrase it belongs to.
 - **Beats.** The rest of each sentence is tunable too: tap the plain part of a story sentence to step that beat (*the turn*, *the landing*…) plain to strange, pin it, or send it back to the dice. Forms live in `FORMS` in `data.js`.
+- **Forms.** The same bit can be told as *The bit*, *Local news*, *Wedding toast* or *Complaint to the manager*. Each form has its own beats and lengths, and every form lands: `checkForm` in `grammar.js` rejects any stanza whose last paragraph has no landing beat.
+- **Today's bit.** One story per day (UTC), the same for everyone: generated from the date alone (no personal word banks), forms rotating daily, played as a 3-move challenge. `#daily` links straight to it.
 - **Challenge friends.** *Challenge friends* makes a link: everyone gets the same story and the same few moves (a move is any word or beat that differs from the start; putting it back refunds it). Each player copies their version link back to the group; *Compare* takes a pasted pile of links (a group-chat dump works), shows every version against the original with changes highlighted, and lets the room clap-vote. *Copy compare link* shares the whole set. No server: every copy is a link (`#c=` challenge, `#p=` in progress, `#s=` finished, `#cmp=` a set).
 - **The cast.** Keep a bit and its character joins your cast; tell more stories about them and they become someone.
 - **Links.** The URL carries every word (yours included), the form, tuned beats, the dial, the length, the seed and your pins. Links are versioned (`v: 2`); older links still load.
@@ -50,6 +52,8 @@ The grammar guarantees well-formed, not funny. Funny is the dial's job, and the 
 - **Yours.** Add words in the *Word bank* section (with a live preview in the slot's frame) or by typing your own in any picker. They live in your browser, show up in shuffles and pickers, and travel inline inside story links.
 - **Share a pack.** *Copy pack link* gives a `#pack=…` URL. Opening it adds those words to the opener's bank.
 - **Grow the shared bank.** *Suggest for everyone* opens a pre-filled GitHub issue with your words as JSON. When a maintainer adds the `accepted-pack` label, [`word-pack.yml`](.github/workflows/word-pack.yml) runs [`tools/accept-pack.mjs`](tools/accept-pack.mjs): it checks every word against the grammar, drops duplicates, writes `packs/issue-<n>.json`, adds it to `packs/index.json`, and opens a pull request. Merge it and the words ship to everyone.
+
+  Packs can carry **forms** too (`"forms": { "slug": { name, stanzas, beats } }`, same shape as `FORMS` in `data.js`). The tool runs `checkForm` on each and never reuses a taken slug, so links to a form keep meaning the same thing.
 
   Packs load in `packs/index.json` order and are appended to the pools, so keep that list append-only; old links depend on word positions.
 

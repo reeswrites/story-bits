@@ -47,7 +47,9 @@ const state = {
 };
 
 // ---------- small helpers ----------
-const rand = (n) => Math.floor(Math.random() * n);
+// All generation draws from rng, so a seeded day (the daily bit) comes out the same for everyone.
+let rng = Math.random;
+const rand = (n) => Math.floor(rng() * n);
 function seeded(seed) {
   let s = seed >>> 0 || 1;
   return () => {
@@ -123,7 +125,7 @@ function allowed(schema, ph, part) {
 // Every value a slot can take at this depth: the built-in words, then your bank.
 function options(schema, part, depth) {
   const out = part.pool.map((_, i) => i).filter((i) => depth < MAX_DEPTH || !nests(part.pool[i]));
-  for (const e of bank) if (e.s === schema && e.k === part.k) out.push(asValue(e));
+  if (!state.shared) for (const e of bank) if (e.s === schema && e.k === part.k) out.push(asValue(e));
   return out;
 }
 
@@ -150,7 +152,7 @@ function tidy(schema, ph) {
 // Which optional slots are filled. Nested things are kept a little shorter.
 function randomShape(schema, depth = 0) {
   const shape = {};
-  for (const p of SCHEMAS[schema].parts) if (p.opt) shape[p.k] = Math.random() < (depth ? 0.35 : 0.5);
+  for (const p of SCHEMAS[schema].parts) if (p.opt) shape[p.k] = rng() < (depth ? 0.35 : 0.5);
   return shape;
 }
 const shapeOf = (ph) => Object.fromEntries(Object.keys(ph.w).map((k) => [k, true]));
@@ -763,6 +765,8 @@ async function loadPacks() {
       if (!/^[\w-]+\.json$/.test(f)) continue;
       const pack = await (await fetch(`packs/${f}`)).json();
       for (const e of pack.words || []) if (!checkEntry(e) && !builtinHas(e)) partOf(e.s, e.k).pool.push(poolEntry(e));
+      // Forms join by key; a key already taken is skipped, so links to a form never change meaning.
+      for (const [k, f] of Object.entries(pack.forms || {})) if (!FORMS[k] && /^[a-z][a-z0-9-]{0,23}$/.test(k) && !checkForm(f)) FORMS[k] = { ...f, pack: true };
     }
   } catch {}
 }
@@ -797,7 +801,7 @@ function parseChallenge(c) {
   if (!c || typeof c !== "object") return null;
   const start = parseSnapshot(c.s);
   if (!start || !Number.isInteger(c.n) || c.n < 1 || c.n > 9) return null;
-  return { h: cleanName(c.h), n: c.n, s: start };
+  return { h: cleanName(c.h), n: c.n, s: start, ...(c.d === 1 && { d: 1 }) };
 }
 // A copy of a challenge: { c, me, name }.
 function parseCopy(x) {
@@ -869,7 +873,7 @@ function renderGameBar() {
   bar.hidden = false;
   bar.innerHTML = `
     <div class="gb-top">
-      <p class="gb-title"><span class="eyebrow">Challenge${c.h ? ` from ${esc(c.h)}` : ""}</span>
+      <p class="gb-title"><span class="eyebrow">${c.d ? `Today's bit · ${esc(c.h)}` : `Challenge${c.h ? ` from ${esc(c.h)}` : ""}`}</span>
         Make it yours in <b>${c.n}</b> move${c.n === 1 ? "" : "s"}. Any word or beat you change is a move; put it back to get the move back.</p>
       <div class="gb-moves" aria-label="${used} of ${c.n} moves used">${Array.from({ length: c.n }, (_, i) => `<span class="${i < used ? "on" : ""}"></span>`).join("")}<b>${used}/${c.n}</b></div>
     </div>
@@ -942,7 +946,7 @@ function renderCompare() {
   if (!cmp) return;
   if (!state.game) history.replaceState(null, "", toHash());
   const top = Math.max(0, ...cmp.entries.map((e) => e.votes));
-  const original = `<article class="version original"><header><h3>The original</h3><span class="count">${esc(cmp.c.h ? `from ${cmp.c.h}` : "start")}</span></header>${staticHtml(cmp.c.s, [])}</article>`;
+  const original = `<article class="version original"><header><h3>The original</h3><span class="count">${esc(cmp.c.d ? `today's bit · ${cmp.c.h}` : cmp.c.h ? `from ${cmp.c.h}` : "start")}</span></header>${staticHtml(cmp.c.s, [])}</article>`;
   el.innerHTML = original + cmp.entries.map((e, i) => {
     const ch = changes(cmp.c.s, e.me);
     return `<article class="version${top > 0 && e.votes === top ? " leading" : ""}">
@@ -989,6 +993,8 @@ function render() {
   $("#bit").innerHTML = bitHtml(ctx);
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
 
+  $("#forms").innerHTML = Object.entries(FORMS).map(([k, f]) =>
+    `<button data-form="${k}" aria-pressed="${k === state.form}">${esc(f.name)}</button>`).join("");
   document.querySelectorAll(".dial button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.dial === state.dial)));
   $("#dial-note").textContent = DIAL_NOTES[state.dial];
 
@@ -1004,6 +1010,40 @@ function render() {
   }).join("");
 
   renderPicker();
+}
+
+function setForm(key) {
+  if (!FORMS[key] || key === state.form) return;
+  state.form = key;
+  state.len = Math.min(Math.max(state.len, 2), maxLen());
+  state.beats = {};
+  state.pins = state.pins.filter((p) => !p.startsWith("beat|"));
+  state.sel = null;
+  render();
+}
+
+// Today's bit: the same story for everyone today (UTC), as a 3-move challenge. Generated from
+// the date alone: no word bank, forms rotate by day.
+function dailyChallenge(date = new Date()) {
+  const day = date.toISOString().slice(0, 10);
+  const saved = { rng, pick: state.pick, dial: state.dial, len: state.len, form: state.form, seed: state.seed, beats: state.beats, pins: state.pins };
+  rng = seeded(parseInt(hashStr(`story-bits ${day}`), 36));
+  state.shared = true;
+  try {
+    const keys = Object.keys(FORMS).filter((k) => !FORMS[k].pack);
+    const n = Math.floor(Date.parse(day) / 864e5);
+    Object.assign(state, { form: keys[n % keys.length], dial: 1, beats: {}, pins: [], pick: {} });
+    state.len = Math.min(3, maxLen());
+    for (const sl of SLOTS) state.pick[sl.key] = randomPhrase(sl.key);
+    for (const sl of SLOTS.slice(1)) pickFrom(sl.key, Array.from({ length: 300 }, () => randomPhrase(sl.key)));
+    state.seed = 1 + rand(1e9);
+    const label = new Date(day + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+    return { h: label, d: 1, n: 3, s: fixedSnapshot() };
+  } finally {
+    Object.assign(state, saved);
+    rng = saved.rng;
+    state.shared = false;
+  }
 }
 
 function setLen(n) {
@@ -1142,6 +1182,8 @@ document.addEventListener("click", (e) => {
   if (t.dataset.add) { addWord(t.dataset.add, pathOf(t)); return; }
   if (state.sel && !t.closest(".controls")) state.sel = null;
   if (t.dataset.roll) reroll([t.dataset.roll]);
+  else if (t.dataset.form) setForm(t.dataset.form);
+  else if (t.id === "daily") { const c = parseChallenge(dailyChallenge()); if (c) startGame(c); }
   else if (t.dataset.dial) { state.dial = +t.dataset.dial; reroll(SLOTS.map((x) => x.key)); }
   else if (t.dataset.another !== undefined) tellAnother(+t.dataset.another);
   else if (t.dataset.forget !== undefined) { cast.splice(+t.dataset.forget, 1); saveCast(); renderCast(); }
@@ -1259,6 +1301,7 @@ addEventListener("resize", () => state.sel && positionPicker());
   const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };
   let ready = false;
   if (kind === "pack") importPack(data);
+  else if (h === "daily") { const c = parseChallenge(dailyChallenge()); if (c) { startGame(c); ready = true; } }
   else if (kind === "c") { const c = parseChallenge(read()); if (c) { startGame(c); ready = true; } }
   else if (kind === "p") { const cp = parseCopy(read()); if (cp) { startGame(cp.c, cp.me, cp.name); ready = true; } }
   else if (kind === "s" || kind === "cmp") {

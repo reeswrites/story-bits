@@ -71,3 +71,57 @@ function poolEntry(e) {
     ...(e.s === "feel" && e.k === "n" && { adj: feelTakesIntensity(e.t) }),
   };
 }
+
+// ---------- forms ----------
+// A form (FORMS in data.js, or `forms` in a pack) is the shape of a telling. Its promise is
+// the app's promise: whatever happens, the story lands. So a form is valid only if:
+//   - it has 1–6 stanzas; the first brings in who/what/feel and has no beats (it's the bit);
+//   - every stanza with beats has a "landing" beat in its last paragraph (a tag may follow it);
+//   - every beat a stanza uses exists, and has at least one line that fits the cards in
+//     play (a line naming {where} or {thing} needs that card) for every mood it covers;
+//   - lines are 1–200 characters and use only the known tokens.
+const BEAT_TOKENS = new Set(["P", "p", "o", "pos", "is", "has", "was", "s", "where", "thing", "Thing"]);
+const CARD_KEYS = ["who", "what", "feel", "where", "thing"];
+
+function checkLine(l) {
+  if (!l || typeof l !== "object" || ![0, 1, 2].includes(l.tier)) return "each line needs a tier of 0, 1 or 2";
+  if (typeof l.t !== "string" || !l.t.trim() || l.t.length > 200 || /[<>]/.test(l.t)) return "lines are 1–200 characters, no angle brackets";
+  for (const m of l.t.matchAll(/\{([^}]*)\}/g)) if (!BEAT_TOKENS.has(m[1])) return `unknown token {${m[1]}}`;
+  if ((l.t.match(/[{}]/g) || []).length % 2) return "unbalanced braces";
+  return "";
+}
+const lineNeeds = (t) => ["where", "thing"].filter((k) => new RegExp(`\\{${k}\\}`, "i").test(t));
+
+// Returns "" if the form is valid, or the first reason it isn't.
+function checkForm(f) {
+  if (!f || typeof f !== "object") return "not a form";
+  if (typeof f.name !== "string" || !cleanWord(f.name) || f.name.length > 40) return "a form needs a name up to 40 characters";
+  const beats = f.beats && typeof f.beats === "object" ? f.beats : null;
+  if (!beats) return "a form needs beats";
+  for (const [k, b] of Object.entries(beats)) {
+    if (!/^[a-z][a-z0-9]{0,15}$/.test(k)) return `beat key "${k}" should be short lowercase letters`;
+    if (!b || typeof b.name !== "string" || !b.name.trim()) return `beat "${k}" needs a name`;
+    const pools = b.byMood ? ["1", "0", "-1"].map((m) => b.lines?.[m]) : [b.lines];
+    if (pools.some((p) => !Array.isArray(p) || !p.length)) return `beat "${k}" needs lines${b.byMood ? " for every mood (1, 0, -1)" : ""}`;
+    if (b.byMood && new Set(pools.map((p) => p.length)).size > 1) return `beat "${k}": every mood needs the same number of lines`;
+    for (const p of pools) for (const l of p) { const e = checkLine(l); if (e) return `beat "${k}": ${e}`; }
+    if (b.role !== undefined && b.role !== "landing") return `beat "${k}": the only role is "landing"`;
+  }
+  if (!Array.isArray(f.stanzas) || f.stanzas.length < 1 || f.stanzas.length > 6) return "a form needs 1–6 stanzas";
+  for (const [i, st] of f.stanzas.entries()) {
+    const n = i + 1;
+    if (!st || typeof st.name !== "string" || !st.name.trim()) return `stanza ${n} needs a name`;
+    if (!Array.isArray(st.slots) || !["who", "what", "feel"].every((k) => st.slots.includes(k)) || !st.slots.every((k) => CARD_KEYS.includes(k))) return `stanza ${n}: cards must include who, what and feel, and only known cards`;
+    if (!Array.isArray(st.paras) || !st.paras.every((p) => Array.isArray(p) && p.length)) return `stanza ${n}: paragraphs must be non-empty lists of beats`;
+    if (i === 0 && st.paras.length) return "stanza 1 is the bit itself and has no beats";
+    const used = st.paras.flat();
+    for (const k of used) {
+      const b = beats[k];
+      if (!b) return `stanza ${n} uses beat "${k}", which doesn't exist`;
+      const pools = b.byMood ? Object.values(b.lines) : [b.lines];
+      if (pools.some((p) => !p.some((l) => lineNeeds(l.t).every((c) => st.slots.includes(c))))) return `stanza ${n}: beat "${k}" has no line that fits its cards`;
+    }
+    if (used.length && !st.paras[st.paras.length - 1].some((k) => beats[k].role === "landing")) return `stanza ${n}: the last paragraph needs a landing beat`;
+  }
+  return "";
+}

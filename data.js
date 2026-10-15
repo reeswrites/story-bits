@@ -342,4 +342,159 @@ const FORMS = {
       ] },
     },
   },
+
+  news: {
+    name: "Local news",
+    stanzas: [
+      { name: "The headline", slots: ["who", "what", "feel"], paras: [] },
+      { name: "Live report", slots: ["who", "what", "feel", "where"], paras: [["open"], ["signoff"]] },
+      { name: "With witnesses", slots: ["who", "what", "feel", "where", "thing"], paras: [["open"], ["witness", "thing"], ["signoff"]] },
+      { name: "Developing story", slots: ["who", "what", "feel", "where", "thing"], paras: [["open"], ["witness", "thing", "update"], ["signoff"]] },
+    ],
+    beats: {
+      open: { name: "the anchor", lines: [
+        B(0, "Good evening. Our top story tonight comes to us from {where}."),
+        B(0, "Breaking news out of {where}, where the situation is described as ongoing."),
+        B(1, "We go live now to {where}, where our reporter has been for nine hours."),
+        B(2, "Tonight, an exclusive from {where}, a place this station is legally required to cover."),
+      ] },
+      witness: { name: "a witness", byMood: true, lines: {
+        "1": [
+          B(0, "Neighbors say {p} {has} been \"insufferable, in a good way.\""),
+          B(1, "One witness described the mood as \"a parade, but for one person.\""),
+          B(2, "Several birds have also issued statements of support."),
+        ],
+        "-1": [
+          B(0, "Neighbors say {p} {has} not left the porch since."),
+          B(1, "One witness described the mood as \"a soap opera with no commercials.\""),
+          B(2, "A vigil is planned for Thursday. It will be catered."),
+        ],
+        "0": [
+          B(0, "Neighbors say {p} {is} \"processing it.\""),
+          B(1, "One witness declined to comment, then commented for forty minutes."),
+          B(2, "The town council has scheduled a vote on how to feel about it."),
+        ],
+      } },
+      thing: { name: "the evidence", lines: [
+        B(0, "Police have recovered {thing} from the scene."),
+        B(0, "At the center of it all: {thing}."),
+        B(1, "Authorities are asking anyone with information about {thing} to come forward."),
+        B(2, "{Thing} could not be reached for comment."),
+      ] },
+      update: { name: "this just in", byClash: true, lines: [
+        B(0, "This just in: sources confirm it really happened."),
+        B(1, "This just in: a second, smaller news van has arrived."),
+        B(2, "This just in: the swans are involved."),
+      ] },
+      signoff: { name: "the sign-off", role: "landing", lines: [
+        B(0, "{P} {is} expected to make a full recovery. Back to you."),
+        B(0, "We'll keep you posted. Now, here's Doug with the weather."),
+        B(1, "Officials say there is no cause for alarm, and frankly, it's kind of sweet. Back to you."),
+        B(1, "The station would like to apologize. It was a slow news day."),
+        B(2, "{Thing} has since been named Citizen of the Year. Back to you."),
+      ] },
+    },
+  },
+
+  toast: {
+    name: "Wedding toast",
+    stanzas: [
+      { name: "The premise", slots: ["who", "what", "feel"], paras: [] },
+      { name: "Short and sweet", slots: ["who", "what", "feel", "where"], paras: [["raise"], ["cheers"]] },
+      { name: "The story", slots: ["who", "what", "feel", "where", "thing"], paras: [["raise"], ["story", "thing"], ["cheers"]] },
+      { name: "Too long", slots: ["who", "what", "feel", "where", "thing"], paras: [["raise"], ["story", "thing", "lesson"], ["cheers"]] },
+    ],
+    beats: {
+      raise: { name: "the opener", lines: [
+        B(0, "For those who don't know me, I met the happy couple at {where}."),
+        B(0, "I'll keep this short, which is what I said at {where}, too."),
+        B(1, "I was asked to keep this story out of the toast. It happened at {where}."),
+        B(2, "I am contractually obligated to mention {where} at every wedding I attend."),
+      ] },
+      story: { name: "the story", byMood: true, lines: {
+        "1": [
+          B(0, "And {p} {was} glowing. You could see it from the parking lot."),
+          B(1, "{P} cried. I cried. The DJ cried."),
+          B(2, "{P} hired a string quartet for the occasion, which was a Tuesday."),
+        ],
+        "-1": [
+          B(0, "And {p} {was} a wreck, which, if you know {o}, is saying something."),
+          B(1, "{P} called me at 3 a.m. to talk about it. Then again at 3:15."),
+          B(2, "{P} wore black for a month. To the beach."),
+        ],
+        "0": [
+          B(0, "And {p} handled it the way {p} handle{s} everything: with a spreadsheet."),
+          B(1, "{P} said nothing for a full minute, which has never happened before or since."),
+          B(2, "{P} wrote a haiku about it. It was eleven pages."),
+        ],
+      } },
+      thing: { name: "the thing", lines: [
+        B(0, "Somehow {thing} was there for all of it."),
+        B(1, "Which is how {thing} ended up in the wedding party."),
+        B(2, "{Thing} is here tonight, at table six."),
+      ] },
+      lesson: { name: "the lesson", byClash: true, lines: [
+        B(0, "And I think that says a lot about love."),
+        B(1, "And I think that says a lot about love, and also about the fire code."),
+        B(2, "And if that isn't love, I don't know what the swans were trying to tell us."),
+      ] },
+      cheers: { name: "the cheers", role: "landing", lines: [
+        B(0, "So please, raise your glasses. To love!"),
+        B(0, "Anyway, it all worked out, and here we are. Cheers!"),
+        B(1, "Everyone is fine now, mostly. To the happy couple!"),
+        B(2, "{Thing} has agreed not to object. Cheers!"),
+      ] },
+    },
+  },
+
+  complaint: {
+    name: "Complaint to the manager",
+    stanzas: [
+      { name: "The incident", slots: ["who", "what", "feel"], paras: [] },
+      { name: "A brief note", slots: ["who", "what", "feel", "where"], paras: [["opening"], ["demand"]] },
+      { name: "A formal letter", slots: ["who", "what", "feel", "where", "thing"], paras: [["opening"], ["grievance", "thing"], ["demand"]] },
+      { name: "Escalated", slots: ["who", "what", "feel", "where", "thing"], paras: [["opening"], ["grievance", "thing", "escalate"], ["demand"]] },
+    ],
+    beats: {
+      opening: { name: "the salutation", lines: [
+        B(0, "To whom it may concern: I am writing about an incident at {where}."),
+        B(0, "Dear Manager, I'll be brief. I was at {where}."),
+        B(1, "I have written to {where} before. You know who this is."),
+        B(2, "This letter is being delivered to {where} by carrier pigeon, as requested."),
+      ] },
+      grievance: { name: "the grievance", byMood: true, lines: {
+        "1": [
+          B(0, "Normally I'm delighted. And I was. That's not the point."),
+          B(1, "I was having a lovely time, which your staff took personally."),
+          B(2, "I was so happy that I was asked to leave by a hostess named Fate."),
+        ],
+        "-1": [
+          B(0, "I have never been so upset in my life, and I once owned a timeshare."),
+          B(1, "I have attached a diagram of my feelings."),
+          B(2, "I have alerted the moon."),
+        ],
+        "0": [
+          B(0, "I'm not angry. I'm just noting it, for the record."),
+          B(1, "I have mixed feelings, all of which I would like refunded."),
+          B(2, "I felt nothing, which I believe violates your mission statement."),
+        ],
+      } },
+      thing: { name: "the exhibit", lines: [
+        B(0, "I would also like to discuss {thing}."),
+        B(1, "Nobody explained {thing} to me."),
+        B(2, "{Thing} is cc'd on this letter."),
+      ] },
+      escalate: { name: "the escalation", byClash: true, lines: [
+        B(0, "I asked to speak to someone in charge. They sent the same person back."),
+        B(1, "I was offered a coupon. I have framed it."),
+        B(2, "I was offered a coupon. The coupon apologized."),
+      ] },
+      demand: { name: "the demand", role: "landing", lines: [
+        B(0, "I expect a full refund, and honestly? I'll be fine."),
+        B(0, "Please don't let it happen again. Otherwise, five stars."),
+        B(1, "In conclusion: I'll be back next week. Same table."),
+        B(2, "I accept your apology in advance. {Thing} does not."),
+      ] },
+    },
+  },
 };
