@@ -240,82 +240,106 @@ const SCHEMAS = {
   },
 };
 
-// Story beats. Tokens: {Who}/{who} name, {P}/{p} pronoun, {o}, {pos}, {is}, {has}, {was},
-// {s} (verb ending: "keep{s}"), {where}, {thing}. Keyed by feeling valence where that matters.
-const BEATS = {
-  setup: [
-    "It all started at {where}.",
-    "This happened at {where}, of all places.",
-    "{P} would tell you it began at {where}, though that part is disputed.",
-    "The trouble started, as it so often does, at {where}.",
-    "Picture {where}, mid-afternoon.",
-  ],
-  dwell: {
-    "1": [
-      "{P} {has} told the mailman, the pharmacist, and two strangers at the bus stop.",
-      "{P} {has} brought it up at every meal since.",
-      "{P} made a group chat just to announce it.",
-      "There is now a slideshow. It has transitions.",
+// Story forms. A form is the shape of the telling: which cards each length brings in, and
+// which beats fill each paragraph. Every beat line has a tier, so beats sit on the same
+// plain → strange ladder as words and can be tuned the same way.
+//
+// Beat tokens: {P}/{p} pronoun, {o}, {pos}, {is}, {has}, {was}, {s} (verb ending: "keep{s}"),
+// {where}, {thing}, {Thing} (thing at the start of a sentence).
+// A beat line that names {where} or {thing} is only used once that card is in play.
+// Group options: byMood: one pool per feeling mood (equal lengths, so a tuned beat survives
+// a mood change). byClash: the default line's tier follows how many pairs clash.
+// role "landing": the beat that resolves the story. Every form ends on one.
+const B = (tier, t) => ({ tier, t });
+
+const FORMS = {
+  bit: {
+    name: "The bit",
+    stanzas: [
+      { name: "Just the bit", slots: ["who", "what", "feel"], paras: [] },
+      { name: "Bit + landing", slots: ["who", "what", "feel", "where"], paras: [["setup"], ["resolve"]] },
+      { name: "Short story", slots: ["who", "what", "feel", "where", "thing"], paras: [["setup"], ["thing", "after"], ["resolve"]] },
+      { name: "With a turn", slots: ["who", "what", "feel", "where", "thing"], paras: [["setup"], ["thing", "after", "turn"], ["resolve"]] },
+      { name: "The full telling", slots: ["who", "what", "feel", "where", "thing"], paras: [["setup", "dwell"], ["thing", "after", "turn"], ["resolve", "tag"]] },
     ],
-    "-1": [
-      "{P} {has} been pacing the kitchen since Tuesday.",
-      "{P} {has} been staring out the window like a lighthouse keeper.",
-      "{P} keep{s} saying \"it's fine\" in the voice that means it isn't.",
-      "{P} {has} reorganized the spice rack three times.",
-    ],
-    "0": [
-      "{P} {is} handling it in {pos} own particular way.",
-      "Nobody can tell what {p} {is} thinking, including {o}.",
-      "{P} {has} started taking long, thoughtful walks.",
-      "{P} {has} written about it in a notebook nobody is allowed to read.",
-    ],
+    beats: {
+      setup: { name: "how it started", lines: [
+        B(0, "It all started at {where}."),
+        B(0, "This happened at {where}, of all places."),
+        B(0, "The trouble started, as it so often does, at {where}."),
+        B(0, "Picture {where}, mid-afternoon."),
+        B(1, "{P} would tell you it began at {where}, though that part is disputed."),
+        B(1, "Nobody remembers how everyone ended up at {where}."),
+        B(2, "Historians agree it began at {where}. Historians are not sure why."),
+      ] },
+      dwell: { name: "how they're taking it", byMood: true, lines: {
+        "1": [
+          B(0, "{P} {has} brought it up at every meal since."),
+          B(0, "{P} made a group chat just to announce it."),
+          B(1, "{P} {has} told the mailman, the pharmacist, and two strangers at the bus stop."),
+          B(1, "There is now a slideshow. It has transitions."),
+          B(2, "{P} {has} commissioned a mural about it."),
+        ],
+        "-1": [
+          B(0, "{P} {has} been pacing the kitchen since Tuesday."),
+          B(0, "{P} keep{s} saying \"it's fine\" in the voice that means it isn't."),
+          B(1, "{P} {has} reorganized the spice rack three times."),
+          B(1, "{P} {has} been staring out the window like a lighthouse keeper."),
+          B(2, "{P} {has} written a strongly worded letter to the moon."),
+        ],
+        "0": [
+          B(0, "{P} {is} handling it in {pos} own particular way."),
+          B(0, "Nobody can tell what {p} {is} thinking, including {o}."),
+          B(1, "{P} {has} started taking long, thoughtful walks."),
+          B(1, "{P} {has} written about it in a notebook nobody is allowed to read."),
+          B(2, "{P} {has} started discussing it only in the third person."),
+        ],
+      } },
+      thing: { name: "the thing shows up", lines: [
+        B(0, "Then {thing} got involved."),
+        B(0, "Nobody saw {thing} coming."),
+        B(0, "Somewhere in all of this there was {thing}."),
+        B(0, "And of course there was {thing}."),
+        B(1, "The problem, as always, was {thing}."),
+        B(2, "{Thing} was, legally speaking, the main character."),
+      ] },
+      after: { name: "the aftermath", lines: [
+        B(0, "{P} still won't explain how."),
+        B(0, "Everyone agrees that was the turning point."),
+        B(0, "It's a whole thing. Ask {o}."),
+        B(1, "Witnesses describe it differently."),
+        B(1, "This is the part {p} skip{s} when telling it to grandparents."),
+        B(2, "It has since been elected to the school board."),
+      ] },
+      turn: { name: "the turn", byClash: true, lines: [
+        B(0, "For a while it looked like it might all go sideways."),
+        B(0, "Then the weather turned, the way it does."),
+        B(0, "A cousin got involved, which never helps."),
+        B(1, "Then a local news van showed up, unrelated, but still."),
+        B(1, "Then someone started a petition."),
+        B(1, "Then {p} met a man who claimed to have done the exact same thing in 1987."),
+        B(2, "Then a marching band arrived, uninvited and fully committed."),
+        B(2, "Then the swans unionized."),
+        B(2, "Then, without warning, it began to rain small, polite frogs."),
+      ] },
+      // The landing: the incongruity resolves somewhere safe enough to laugh.
+      resolve: { name: "the landing", role: "landing", lines: [
+        B(0, "Now {p} tell{s} the story at parties, and it gets longer every time."),
+        B(0, "And honestly? {P} {is} going to be okay."),
+        B(0, "It all worked out. It usually does. {P} still bring{s} it up."),
+        B(1, "In the end everyone was fine, and {thing} now hangs in {pos} hallway."),
+        B(1, "Nobody got hurt, except maybe {pos} pride, and that grew back."),
+        B(1, "The family has agreed to never speak of it, and speaks of it constantly."),
+        B(1, "{P} {has} since made peace with it, mostly, on weekdays."),
+        B(2, "Everyone is fine. The swans have issued an apology."),
+      ] },
+      tag: { name: "the tag", lines: [
+        B(0, "Ask {o} about it sometime."),
+        B(0, "You'll hear about it at Thanksgiving."),
+        B(0, "{P} will tell you it was worth it."),
+        B(1, "Don't bring up {thing} around {o}."),
+        B(2, "There is a documentary in development."),
+      ] },
+    },
   },
-  thing: [
-    "Then {thing} got involved.",
-    "Nobody saw {thing} coming.",
-    "The problem, as always, was {thing}.",
-    "Somewhere in all of this there was {thing}.",
-    "And of course there was {thing}.",
-  ],
-  thingAfter: [
-    "{P} still won't explain how.",
-    "Everyone agrees that was the turning point.",
-    "Witnesses describe it differently.",
-    "It's a whole thing. Ask {o}.",
-    "This is the part {p} skip{s} when telling it to grandparents.",
-  ],
-  turn: [
-    // indexed by tier: plausible, odd, absurd
-    [
-      "For a while it looked like it might all go sideways.",
-      "Then the weather turned, the way it does.",
-      "A cousin got involved, which never helps.",
-    ],
-    [
-      "Then a local news van showed up, unrelated, but still.",
-      "Then someone started a petition.",
-      "Then {p} met a man who claimed to have done the exact same thing in 1987.",
-    ],
-    [
-      "Then a marching band arrived, uninvited and fully committed.",
-      "Then the swans unionized.",
-      "Then, without warning, it began to rain small, polite frogs.",
-    ],
-  ],
-  // The landing: the incongruity resolves somewhere safe enough to laugh.
-  resolve: [
-    "In the end everyone was fine, and {thing} now hangs in {pos} hallway.",
-    "Now {p} tell{s} the story at parties, and it gets longer every time.",
-    "And honestly? {P} {is} going to be okay.",
-    "It all worked out. It usually does. {P} still bring{s} it up.",
-    "Nobody got hurt, except maybe {pos} pride, and that grew back.",
-    "The family has agreed to never speak of it, and speaks of it constantly.",
-    "{P} {has} since made peace with it, mostly, on weekdays.",
-  ],
-  tag: [
-    "Ask {o} about it sometime.",
-    "Don't bring up {thing} around {o}.",
-    "You'll hear about it at Thanksgiving.",
-    "{P} will tell you it was worth it.",
-  ],
 };

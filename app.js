@@ -13,15 +13,11 @@ const DIAL_NOTES = [
   "Every pair in play clashes. The world gets strange, then lands safely.",
 ];
 
-// Length in stanzas. Each step brings in one more beat, and some bring in a new card.
-// The bit itself is always stanza one; from two on, the story always lands.
-const LENGTHS = [
-  { slots: ["who", "what", "feel"], name: "Just the bit" },
-  { slots: ["who", "what", "feel", "where"], name: "Bit + landing" },
-  { slots: ["who", "what", "feel", "where", "thing"], name: "Short story" },
-  { slots: ["who", "what", "feel", "where", "thing"], name: "With a turn" },
-  { slots: ["who", "what", "feel", "where", "thing"], name: "The full telling" },
-];
+// The story's shape comes from its form (FORMS in data.js): each length is a stanza that
+// says which cards are in play and which beats fill each paragraph.
+const form = () => FORMS[state.form] || FORMS.bit;
+const stanza = () => form().stanzas[state.len - 1];
+const maxLen = () => form().stanzas.length;
 
 // Incongruity is counted in pairs. Each new card adds a pair that can either fit or clash.
 // event/feeling clash when their mood disagrees; the others clash across registers
@@ -37,15 +33,17 @@ function clashes(pair, pick = state.pick) {
 }
 // Which pairs the dial wants clashing: none, just event/feeling, or all.
 const wantClash = (i) => state.dial === 2 || (state.dial === 1 && i === 0);
-const pairsInPlay = () => PAIRS.filter((p) => state.len >= p.from);
+const pairsInPlay = () => PAIRS.filter((p) => stanza().slots.includes(p.a) && stanza().slots.includes(p.b));
 
 const state = {
   pick: {},
   dial: 1,
   len: 2,
+  form: "bit",
   seed: 1,
-  pins: [], // "slot|path" for words that survive shuffles
-  sel: null, // { slot, path, occ }: the word open in the picker
+  beats: {}, // beat key -> line index, for beats tuned by hand (the rest come from the seed)
+  pins: [], // "slot|path" for words and "beat|key" for beats that survive shuffles
+  sel: null, // { slot, path, occ } for a word, or { beat } for a beat, open in the picker
 };
 
 // ---------- small helpers ----------
@@ -272,29 +270,65 @@ function fill(tpl, ctx) {
     if (k === "P") return cap(ctx.who.p);
     if (k === "where") return phraseHtml("where");
     if (k === "thing") return phraseHtml("thing");
+    if (k === "Thing") return phraseHtml("thing", true);
+    if (k in PRONOUN_KEYS) return ctx.who[k];
+    return "";
+  });
+}
+// The same, as plain text (for the picker's list of beat lines).
+function fillText(tpl, ctx) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => {
+    if (k === "P") return cap(ctx.who.p);
+    if (k === "where" || k === "thing") return ctx[k];
+    if (k === "Thing") return cap(ctx.thing);
     if (k in PRONOUN_KEYS) return ctx.who[k];
     return "";
   });
 }
 
-function story(ctx) {
+// ---------- beats ----------
+const beatGroup = (key) => form().beats[key];
+// A beat's lines for this story: by-mood groups pick the pool for the feeling's mood.
+function beatLines(key, ctx) {
+  const g = beatGroup(key);
+  return g.byMood ? g.lines[String(ctx.feel.v)] : g.lines;
+}
+// A line can be used once the cards it names are in play.
+const lineFits = (line) => ["where", "thing"].every((k) => !new RegExp(`\\{${k}\\}`, "i").test(line.t) || stanza().slots.includes(k));
+const clashCount = () => pairsInPlay().filter((p) => clashes(p)).length;
+const beatKeys = () => Object.keys(form().beats);
+
+// Which line each beat in play uses: a hand-tuned choice if it still fits, else the seed's.
+// Every beat draws from the seed in a fixed order, so growing or tuning one beat never
+// reshuffles the others.
+function beatChoices(ctx) {
   const rng = seeded(state.seed);
-  const L = state.len;
-  if (L < 2) return [];
-  const fv = String(ctx.feel.v);
-  const turnTier = Math.min(2, pairsInPlay().filter((p) => clashes(p)).length);
-  // Draw every beat in a fixed order so growing the story keeps the earlier lines.
-  const b = {
-    setup: choose(BEATS.setup, rng), dwell: choose(BEATS.dwell[fv], rng),
-    thing: choose(BEATS.thing, rng), after: choose(BEATS.thingAfter, rng),
-    turn: choose(BEATS.turn[turnTier], rng),
-    resolve: choose(BEATS.resolve.filter((r) => L >= 3 || !r.includes("{thing}")), rng),
-    tag: choose(BEATS.tag.filter((r) => L >= 3 || !r.includes("{thing}")), rng),
-  };
-  const paras = [[b.setup, L >= 5 && b.dwell]];
-  if (L >= 3) paras.push([b.thing, b.after, L >= 4 && b.turn]);
-  paras.push([b.resolve, L >= 5 && b.tag]);
-  return paras.map((p) => p.filter(Boolean).map((s) => fill(s, ctx)).join(" "));
+  const out = {};
+  const inPlay = new Set(stanza().paras.flat());
+  for (const key of beatKeys()) {
+    const r = rng();
+    if (!inPlay.has(key)) continue;
+    const lines = beatLines(key, ctx);
+    const tuned = state.beats[key];
+    if (Number.isInteger(tuned) && lines[tuned] && lineFits(lines[tuned])) { out[key] = tuned; continue; }
+    const g = beatGroup(key);
+    const want = g.byClash ? Math.min(2, clashCount()) : null;
+    let ok = lines.map((l, i) => ({ l, i })).filter((x) => lineFits(x.l));
+    const byTier = ok.filter((x) => (want === null ? x.l.tier <= state.dial : x.l.tier === want));
+    if (byTier.length) ok = byTier;
+    out[key] = ok[Math.floor(r * ok.length)].i;
+  }
+  return out;
+}
+
+function story(ctx) {
+  const choice = beatChoices(ctx);
+  const sel = state.sel && state.sel.beat;
+  return stanza().paras.map((keys) => keys.map((key) => {
+    const line = beatLines(key, ctx)[choice[key]];
+    const pinned = state.pins.includes(`beat|${key}`);
+    return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}" tabindex="0" role="button" aria-label="Tune ${esc(beatGroup(key).name)}">${fill(line.t, ctx)}</span>`;
+  }).join(" "));
 }
 
 // ---------- picking under the dial ----------
@@ -356,6 +390,8 @@ function reroll(keys) {
     pickFrom(s.key, Array.from({ length: 300 }, () => applyPins(s.key, randomPhrase(s.key, 0, shape))));
   }
   state.seed = 1 + rand(1e9);
+  // New seed, new telling: hand-tuned beats only survive if pinned.
+  state.beats = Object.fromEntries(Object.entries(state.beats).filter(([k]) => state.pins.includes(`beat|${k}`)));
   render();
 }
 
@@ -394,6 +430,19 @@ function removeWord(slot, path) {
   dropWord(at.schema, at.ph, at.k);
   state.pick[slot] = top;
   state.sel = null;
+  render();
+}
+// A new telling: fresh beats from a new seed, except pinned beats, which keep their line.
+function retell() {
+  const ctx = context();
+  const keep = beatChoices(ctx);
+  state.seed = 1 + rand(1e9);
+  state.beats = Object.fromEntries(Object.entries(keep).filter(([k]) => state.pins.includes(`beat|${k}`)));
+  if (state.sel && state.sel.beat) state.sel = null;
+  render();
+}
+function setBeat(key, i) {
+  state.beats = { ...state.beats, [key]: i };
   render();
 }
 function togglePin(slot, path) {
@@ -438,9 +487,54 @@ function crumbs(slot, path) {
 }
 
 let pickerVals = [];
+// The lines a beat can take right now, plain to strange.
+function beatOptions(key, ctx) {
+  return beatLines(key, ctx).map((l, i) => ({ l, i })).filter((x) => lineFits(x.l))
+    .sort((a, b) => a.l.tier - b.l.tier || a.i - b.i);
+}
+function renderBeatPicker(el, key) {
+  const ctx = context();
+  const cur = beatChoices(ctx)[key];
+  const opts = beatOptions(key, ctx);
+  pickerVals = opts.map((x) => x.i);
+  const idx = pickerVals.indexOf(cur);
+  const line = beatLines(key, ctx)[cur];
+  const pinned = state.pins.includes(`beat|${key}`);
+  const groups = [0, 1, 2].map((t) => {
+    const items = opts.map((x, i) => ({ ...x, n: i })).filter((x) => x.l.tier === t);
+    if (!items.length) return "";
+    return `<div class="pk-group"><h4>${TIER_NAMES[t]}</h4>${items.map((x) =>
+      `<button class="pk-opt pk-line${x.i === cur ? " cur" : ""}" data-opt="${x.n}">${esc(fillText(x.l.t, ctx))}</button>`).join("")}</div>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="pk-head">
+      <span class="pk-crumb">Story › ${esc(beatGroup(key).name)}</span>
+      <button class="pk-x" data-act="close" aria-label="Close">✕</button>
+    </div>
+    <div class="pk-step">
+      <button class="pk-arrow" data-act="prev" aria-label="Plainer" ${idx <= 0 ? "disabled" : ""}>‹</button>
+      <div class="pk-cur"><b class="pk-sentence">${esc(fillText(line.t, ctx))}</b>
+        <span class="pk-meta"><span class="tier t${line.tier}">${TIER_NAMES[line.tier]}</span> ${idx + 1} of ${opts.length}${Number.isInteger(state.beats[key]) ? " · tuned" : ""}</span></div>
+      <button class="pk-arrow" data-act="next" aria-label="Stranger" ${idx >= opts.length - 1 ? "disabled" : ""}>›</button>
+    </div>
+    <p class="pk-keys">← plainer · stranger →</p>
+    <div class="pk-actions">
+      <button data-act="surprise">Surprise me</button>
+      <button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>
+      ${Number.isInteger(state.beats[key]) ? `<button data-act="untune">Back to the dice</button>` : ""}
+    </div>
+    <div class="pk-list">${groups}</div>`;
+  el.hidden = false;
+  positionPicker();
+}
 function renderPicker() {
   const el = $("#picker");
   const sel = state.sel;
+  if (sel && sel.beat) {
+    if (!stanza().paras.flat().includes(sel.beat)) { state.sel = null; el.hidden = true; return; }
+    renderBeatPicker(el, sel.beat);
+    return;
+  }
   const at = sel && locate(sel.slot, state.pick[sel.slot], sel.path);
   if (!at || !(at.k in at.ph.w)) { state.sel = null; el.hidden = true; return; }
   const part = partOf(at.schema, at.k);
@@ -487,6 +581,7 @@ function renderPicker() {
 function selectedEl() {
   const s = state.sel;
   if (!s) return null;
+  if (s.beat) return document.querySelector(`.beat[data-beat="${s.beat}"]`);
   const els = document.querySelectorAll(`.word[data-slot="${s.slot}"][data-path="${s.path.join(".")}"]`);
   return els[Math.min(s.occ || 0, els.length - 1)] || null;
 }
@@ -509,6 +604,17 @@ function positionPicker() {
   el.style.top = `${r.bottom + scrollY + 10}px`;
 }
 
+function selectBeat(key) {
+  state.sel = state.sel && state.sel.beat === key ? null : { beat: key };
+  render();
+  if (state.sel) selectedEl()?.focus({ preventScroll: true });
+}
+function surpriseBeat(key) {
+  const ctx = context();
+  const cur = beatChoices(ctx)[key];
+  const opts = beatOptions(key, ctx).map((x) => x.i).filter((i) => i !== cur);
+  if (opts.length) setBeat(key, opts[rand(opts.length)]);
+}
 function select(slot, path, el) {
   const els = [...document.querySelectorAll(`.word[data-slot="${slot}"][data-path="${path.join(".")}"]`)];
   const occ = Math.max(0, els.indexOf(el));
@@ -519,6 +625,13 @@ function select(slot, path, el) {
 }
 function step(dir) {
   const s = state.sel;
+  if (s.beat) {
+    const ctx = context();
+    const opts = beatOptions(s.beat, ctx).map((x) => x.i);
+    const i = opts.indexOf(beatChoices(ctx)[s.beat]) + dir;
+    if (i >= 0 && i < opts.length) setBeat(s.beat, opts[i]);
+    return;
+  }
   const at = locate(s.slot, state.pick[s.slot], s.path);
   const vals = pickerOptions(at);
   const i = vals.findIndex((v) => same(v, at.ph.w[at.k])) + dir;
@@ -583,17 +696,25 @@ function validPhrase(schema, ph, depth) {
   }
   return parts.every((p) => !(p.k in ph.w) || allowed(schema, ph, p));
 }
+// Everything that makes a story what it is. v2 adds the form and hand-tuned beats.
+function snapshot() {
+  return { v: 2, f: state.form, p: state.pick, d: state.dial, s: state.seed, l: state.len, b: state.beats, pn: state.pins };
+}
+// Load a snapshot into state if it's valid. v1 links (no form, no beats) still load.
+function loadSnapshot(x) {
+  const { p, d, s, l, pn = [], f = "bit", b = {} } = x || {};
+  if (!FORMS[f] || ![0, 1, 2].includes(d) || !Number.isInteger(s)) return false;
+  if (!Number.isInteger(l) || l < 1 || l > FORMS[f].stanzas.length) return false;
+  if (!p || !SLOTS.every((x) => validPhrase(x.key, p[x.key], 0))) return false;
+  const beats = b && typeof b === "object" ? Object.fromEntries(Object.entries(b).filter(([k, i]) => FORMS[f].beats[k] && Number.isInteger(i) && i >= 0)) : {};
+  Object.assign(state, { pick: p, dial: d, seed: s || 1, len: l, form: f, beats, pins: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [] });
+  return true;
+}
 function toHash() {
-  return "#" + b64(JSON.stringify({ p: state.pick, d: state.dial, s: state.seed, l: state.len, pn: state.pins }));
+  return "#" + b64(JSON.stringify(snapshot()));
 }
 function fromHash(h) {
-  try {
-    const { p, d, s, l, pn = [] } = JSON.parse(unb64(h));
-    if (![0, 1, 2].includes(d) || !Number.isInteger(l) || l < 1 || l > 5 || !Number.isInteger(s)) return false;
-    if (!SLOTS.every((x) => validPhrase(x.key, p[x.key], 0))) return false;
-    Object.assign(state, { pick: p, dial: d, seed: s || 1, len: l, pins: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [] });
-    return true;
-  } catch { return false; }
+  try { return loadSnapshot(JSON.parse(unb64(h))); } catch { return false; }
 }
 
 // A pack link carries words only: "#pack=<base64url JSON { name, words }>".
@@ -639,13 +760,14 @@ function render() {
   // Drop pins and selection that point at words which no longer exist.
   state.pins = state.pins.filter((key) => {
     const [slot, p] = key.split("|");
+    if (slot === "beat") return !!form().beats[p];
     const at = state.pick[slot] && locate(slot, state.pick[slot], p.split("."));
     return at && at.k in at.ph.w;
   });
   const ctx = context();
   history.replaceState(null, "", toHash());
 
-  const inPlay = LENGTHS[state.len - 1].slots;
+  const inPlay = stanza().slots;
   $("#legend").innerHTML = SLOTS.filter((s) => inPlay.includes(s.key)).map((s) =>
     `<button class="chip b-${s.key}" data-roll="${s.key}" title="Reroll ${s.hint}, keeping pinned words">${s.label} <span aria-hidden="true">↻</span></button>`).join("");
 
@@ -656,10 +778,10 @@ function render() {
   $("#dial-note").textContent = DIAL_NOTES[state.dial];
 
   $("#len-n").textContent = state.len;
-  $("#len-name").textContent = LENGTHS[state.len - 1].name;
+  $("#len-name").textContent = stanza().name;
   $("#len-down").disabled = state.len <= 1;
-  $("#len-up").disabled = state.len >= 5;
-  $("#len-pips").innerHTML = LENGTHS.map((_, i) => `<span class="${i < state.len ? "on" : ""}"></span>`).join("");
+  $("#len-up").disabled = state.len >= maxLen();
+  $("#len-pips").innerHTML = form().stanzas.map((_, i) => `<span class="${i < state.len ? "on" : ""}"></span>`).join("");
 
   $("#pairs").innerHTML = pairsInPlay().map((p) => {
     const c = clashes(p);
@@ -670,7 +792,7 @@ function render() {
 }
 
 function setLen(n) {
-  state.len = Math.max(1, Math.min(5, n));
+  state.len = Math.max(1, Math.min(maxLen(), n));
   render();
 }
 
@@ -772,6 +894,9 @@ document.addEventListener("click", (e) => {
   const t = e.target.closest("button");
   const inPicker = e.target.closest("#picker");
   if (!t) {
+    // A beat is any part of a story sentence that isn't a word.
+    const beat = !inPicker && e.target.closest(".beat");
+    if (beat) { selectBeat(beat.dataset.beat); return; }
     if (state.sel && !inPicker) { state.sel = null; render(); }
     return;
   }
@@ -781,12 +906,21 @@ document.addEventListener("click", (e) => {
     if (act === "close") { state.sel = null; render(); }
     else if (act === "prev") step(-1);
     else if (act === "next") step(1);
+    else if (s.beat) {
+      if (act === "surprise") surpriseBeat(s.beat);
+      else if (act === "pin") togglePin("beat", [s.beat]);
+      else if (act === "untune") { const b = { ...state.beats }; delete b[s.beat]; state.beats = b; render(); }
+    }
     else if (act === "surprise") surprise(s.slot, s.path);
     else if (act === "pin") togglePin(s.slot, s.path);
     else if (act === "remove") removeWord(s.slot, s.path);
     return;
   }
-  if (t.dataset.opt !== undefined) { setValue(s.slot, s.path, pickerVals[+t.dataset.opt]); return; }
+  if (t.dataset.opt !== undefined) {
+    if (s.beat) setBeat(s.beat, pickerVals[+t.dataset.opt]);
+    else setValue(s.slot, s.path, pickerVals[+t.dataset.opt]);
+    return;
+  }
   if (inPicker) return;
   if (t.classList.contains("word")) { select(t.dataset.slot, pathOf(t), t); return; }
   if (t.dataset.add) { addWord(t.dataset.add, pathOf(t)); return; }
@@ -799,7 +933,7 @@ document.addEventListener("click", (e) => {
   else if (t.id === "len-up") setLen(state.len + 1);
   else if (t.id === "len-down") setLen(state.len - 1);
   else if (t.id === "shuffle") reroll(SLOTS.map((x) => x.key));
-  else if (t.id === "retell") { state.seed = 1 + rand(1e9); render(); }
+  else if (t.id === "retell") retell();
   else if (t.id === "keep") keepBit();
   else if (t.id === "share") copy(location.href, "Link copied. Same words, same story.");
   else if (t.id === "bank-share") copy(packLink(), "Pack link copied. Whoever opens it gets your words in their bank.");
@@ -842,7 +976,20 @@ document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const target = e.target instanceof Element ? e.target : document.body;
   const typing = target.closest("input, textarea, select");
-  if (state.sel && !typing) {
+  if (!typing && (e.key === "Enter" || e.key === " ") && target.closest(".beat") && !target.closest("button")) {
+    e.preventDefault();
+    selectBeat(target.closest(".beat").dataset.beat);
+    return;
+  }
+  if (state.sel && state.sel.beat && !typing) {
+    const s = state.sel;
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); step(-1); selectedEl()?.focus({ preventScroll: true }); return; }
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); step(1); selectedEl()?.focus({ preventScroll: true }); return; }
+    if (e.key === "Escape") { state.sel = null; render(); document.querySelector(`.beat[data-beat="${s.beat}"]`)?.focus(); return; }
+    if (e.key === "p") { togglePin("beat", [s.beat]); return; }
+    if (e.key === "?") { surpriseBeat(s.beat); return; }
+  }
+  if (state.sel && !state.sel.beat && !typing) {
     const s = state.sel;
     if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); step(-1); selectedEl()?.focus({ preventScroll: true }); return; }
     if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); step(1); selectedEl()?.focus({ preventScroll: true }); return; }
@@ -854,7 +1001,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && typing && state.sel) { state.sel = null; render(); return; }
   if (typing) return;
   if (e.key === " " && !target.closest("button")) { e.preventDefault(); state.sel = null; reroll(SLOTS.map((x) => x.key)); }
-  else if (e.key === "r") { state.seed = 1 + rand(1e9); render(); }
+  else if (e.key === "r") retell();
   else if (e.key === "k") keepBit();
   else if (e.key === "+" || e.key === "=" || e.key === "]") setLen(state.len + 1);
   else if (e.key === "-" || e.key === "[") setLen(state.len - 1);
