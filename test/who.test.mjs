@@ -58,14 +58,15 @@ test("adding and dropping a relation keeps the phrase grammatical", () => {
   const r = json(`(() => { ${WHO}
     const ph = who("his", "uncle");
     setWord("who", ph, "r", 0, 0);
-    const added = { w: ph.w.w, hasSub: !!ph.sub?.r?.w?.w };
+    // The nested who leads with its own whose, or with a relation of its own.
+    const added = { w: ph.w.w, hasSub: !!ph.sub?.r && ("w" in ph.sub.r.w) !== ("r" in ph.sub.r.w) };
     const inner = clone(rel(who("her", "brother"), "barber"));
     dropWord("who", inner, "r");
     fresh("story-bits", "bit", 1, 1, 2); state.pick.who = inner;
     return { added, dropped: phraseText("who"), droppedW: inner.w };
   })()`);
   assert.equal(r.added.w, undefined, "a relation replaces whose");
-  assert.equal(r.added.hasSub, true, "the nested who has its own whose");
+  assert.equal(r.added.hasSub, true, "the nested who has its own whose (or relation), never both");
   assert.equal(r.dropped, "her barber", "dropping the relation hands its whose back");
 });
 
