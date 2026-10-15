@@ -197,6 +197,8 @@ function checkGrammar(g) {
   }
   if (g.pronouns !== undefined && g.pronouns !== null && !g.schemas[g.pronouns]?.parts.find((p) => p.k === "n")?.pronouns) return "pronouns must name a card whose head slot has pronouns";
   if (g.moodCard !== undefined && g.moodCard !== null && !g.schemas[g.moodCard]?.parts.find((p) => p.k === "n")?.mood) return "moodCard must name a card whose head slot has a mood";
+  if (g.headline !== undefined && (typeof g.headline !== "string" || g.headline.length > 30)) return "headline is a short label";
+  if (g.rules?.dialName !== undefined && (typeof g.rules.dialName !== "string" || g.rules.dialName.length > 30)) return "rules.dialName is a short label";
   if (typeof g.line !== "string" || g.line.length > 200 || !tokenOk(g.line.replace(/\{P\}/g, "")) || !headlineCards(g).length) return "line is a short template naming at least one card";
   const r = g.rules;
   if (!r || typeof r !== "object") return "needs rules";

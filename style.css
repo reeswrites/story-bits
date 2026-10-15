@@ -37,6 +37,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -259,11 +260,12 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
 .bit { font-size: clamp(22px, 3.4vw, 30px); line-height: 1.3; margin: 0 0 24px; font-weight: 600; letter-spacing: -0.01em; }
 .story p { margin: 0 0 14px; }
 mark { color: inherit; padding: 0 .15em; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.b-who { background: var(--who); }
-.b-what { background: var(--what); }
-.b-feel { background: var(--feel); }
-.b-where { background: var(--where); }
-.b-thing { background: var(--thing); }
+.b-who, .k0 { background: var(--who); }
+.b-what, .k1 { background: var(--what); }
+.b-feel, .k2 { background: var(--feel); }
+.b-where, .k3 { background: var(--where); }
+.b-thing, .k4 { background: var(--thing); }
+.k5 { background: color-mix(in srgb, var(--accent) 35%, var(--card)); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 .actions button, .person-actions button {
@@ -410,3 +412,7 @@ body.room-compare .cmp-add, body.room-compare #cmp-close { display: none !import
 .grammar-desc { flex: 1 1 260px; margin: 0; color: var(--ink-2); font-size: 14px; font-style: italic; }
 body.in-game .grammar-row { display: none; }
 .word.handle { color: var(--ink-2); }
+
+/* Poem forms: each beat on its own line, stanzas spaced, a quieter headline. */
+body.verse .story p { margin: 0 0 22px; line-height: 2; }
+body.verse .bit { font-weight: 500; font-style: italic; }

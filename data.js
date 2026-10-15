@@ -547,6 +547,7 @@ const STORY_GRAMMAR = {
     { key: "thing", label: "Thing", hint: "the object" },
   ],
   // Whose pronouns the beats use ({p}, {is}...), and whose mood picks by-mood beat lines.
+  headline: "The bit",
   pronouns: "who",
   moodCard: "feel",
   line: "{who} {what}, and {p} {is} {feel}.",
@@ -554,6 +555,7 @@ const STORY_GRAMMAR = {
   forms: STORY_FORMS,
   rules: {
     landing: true,
+    dialName: "Incongruity",
     dialLabels: ["Plausible", "Odd", "Absurd"],
     dialNotes: [
       "No pair clashes. A thing your mom would tell you on the phone.",
@@ -573,3 +575,194 @@ const STORY_GRAMMAR = {
 };
 
 const GRAMMARS = { [STORY_GRAMMAR.id]: STORY_GRAMMAR };
+
+// ---------- Small Poems ----------
+// An image grammar. No humor model: nothing has to land. The dial pulls the parts out of agreement:
+// image and place stop sharing a sound, motion and time stop sharing a register
+// (literal → figurative → surreal). Words can nest other cards ("from {where}", "in the voice of
+// {image}"). Prepositions ride on the place's determiner ("in the", "under a").
+const POEM_SCHEMAS = {
+  image: {
+    noun: true, article: true,
+    parts: [
+      { k: "q", name: "quality", opt: true, frame: "a ___ pear", hint: "Describes the image. An adjective.", pool: [
+        { t: "bruised", tier: 0 }, { t: "cold", tier: 0 }, { t: "small", tier: 0 }, { t: "wet", tier: 0 }, { t: "last", tier: 0 },
+        { t: "open", tier: 0 }, { t: "green", tier: 0 }, { t: "folded", tier: 0 }, { t: "paper", tier: 0 }, { t: "salt-white", tier: 0 },
+        { t: "patient", tier: 1 }, { t: "forgetful", tier: 1 }, { t: "unlit", tier: 1 }, { t: "borrowed", tier: 1 }, { t: "half-remembered", tier: 1 },
+        { t: "weightless", tier: 2 }, { t: "invented", tier: 2 }, { t: "inside-out", tier: 2 }, { t: "sleeping", tier: 2 }, { t: "glass", tier: 2 },
+      ] },
+      { k: "n", name: "image", frame: "a ___", hint: "The thing the poem looks at. A singular noun.", pool: [
+        { t: "pear", tier: 0 }, { t: "kettle", tier: 0 }, { t: "window", tier: 0 }, { t: "heron", tier: 0 }, { t: "coat", tier: 0 },
+        { t: "letter", tier: 0 }, { t: "bicycle", tier: 0 }, { t: "field", tier: 0 }, { t: "stone", tier: 0 }, { t: "lamp", tier: 0 }, { t: "river", tier: 0 },
+        { t: "question", tier: 1 }, { t: "silence", tier: 1 }, { t: "apology", tier: 1 }, { t: "hallway", tier: 1 }, { t: "weather", tier: 1 },
+        { t: "century", tier: 2 }, { t: "alphabet", tier: 2 }, { t: "telephone of moths", tier: 2 }, { t: "small god", tier: 2 }, { t: "unfinished bridge", tier: 2 },
+      ] },
+      { k: "c", name: "clause", opt: true, trailing: true, frame: "a pear ___", hint: "Trails the image: “on the sill”, “nobody asked for”.", pool: [
+        { t: "on the sill", tier: 0 }, { t: "with one sleeve", tier: 0 }, { t: "in the grass", tier: 0 }, { t: "of the morning", tier: 0 },
+        { t: "nobody asked for", tier: 1 }, { t: "that kept its promise", tier: 1 }, { t: "brought back from {where}", tier: 1 },
+        { t: "that remembers being rain", tier: 2 }, { t: "shaped like {image}", tier: 2 },
+      ] },
+    ],
+    grow: ["q", "c"],
+  },
+  motion: {
+    parts: [
+      { k: "a", name: "adverb", opt: true, frame: "the pear ___ leans", hint: "How. An adverb before the motion.", pool: [
+        { t: "slowly", tier: 0 }, { t: "still", tier: 0 }, { t: "quietly", tier: 0 }, { t: "almost", tier: 0 },
+        { t: "patiently", tier: 1 }, { t: "gladly", tier: 1 }, { t: "without asking", tier: 1 },
+        { t: "backwards", tier: 2 }, { t: "in reverse", tier: 2 }, { t: "all at once", tier: 2 },
+      ] },
+      { k: "n", name: "motion", frame: "the pear ___", hint: "What the image does, in the present tense: “leans”, “waits”.", pool: [
+        { t: "leans", tier: 0 }, { t: "waits", tier: 0 }, { t: "cools", tier: 0 }, { t: "rests", tier: 0 }, { t: "turns", tier: 0 }, { t: "shines", tier: 0 },
+        { t: "keeps its own counsel", tier: 1 }, { t: "forgets its name", tier: 1 }, { t: "listens", tier: 1 }, { t: "holds its breath", tier: 1 },
+        { t: "unlearns the light", tier: 2 }, { t: "speaks in a dead language", tier: 2 }, { t: "becomes a door", tier: 2 },
+      ] },
+      { k: "t", name: "detail", opt: true, trailing: true, frame: "the pear leans ___", hint: "Trails the motion: “for a while”, “like a held note”.", pool: [
+        { t: "for a while", tier: 0 }, { t: "again", tier: 0 }, { t: "the way it did", tier: 0 },
+        { t: "as if waiting for you", tier: 1 }, { t: "like a held note", tier: 1 },
+        { t: "until the walls agree", tier: 2 }, { t: "in the voice of {image}", tier: 2 },
+      ] },
+    ],
+    grow: ["a", "t"],
+  },
+  where: {
+    noun: true,
+    parts: [
+      { k: "q", name: "quality", opt: true, frame: "in the ___ kitchen", hint: "Describes the place. An adjective.", pool: [
+        { t: "empty", tier: 0 }, { t: "narrow", tier: 0 }, { t: "upstairs", tier: 0 }, { t: "flooded", tier: 0 }, { t: "far", tier: 0 },
+        { t: "cold", tier: 0 }, { t: "small", tier: 0 }, { t: "wet", tier: 0 }, { t: "old", tier: 0 }, { t: "green", tier: 0 }, { t: "bright", tier: 0 },
+        { t: "lonely", tier: 1 }, { t: "patient", tier: 1 }, { t: "half-built", tier: 1 }, { t: "humming", tier: 1 },
+        { t: "folded", tier: 2 }, { t: "invisible", tier: 2 }, { t: "quiet-as-a-held-breath", tier: 2 },
+        { t: "unswept", tier: 1 }, { t: "almost-blue", tier: 1 }, { t: "rented", tier: 1 },
+        { t: "drowned", tier: 2 }, { t: "unmapped", tier: 2 }, { t: "breathing", tier: 2 },
+      ] },
+      { k: "n", name: "place", det: ["in the", "on the", "at the", "under the", "near the", "in a", "under a", "beside a"], frame: "{det} ___", hint: "A place, with how the image is placed in it (in, on, under…).", pool: [
+        { det: "in the", t: "kitchen", tier: 0 }, { det: "at the", t: "station", tier: 0 }, { det: "on the", t: "shore", tier: 0 },
+        { det: "in a", t: "parking lot", tier: 0 }, { det: "near the", t: "window", tier: 0 }, { det: "under the", t: "stairs", tier: 0 },
+        { det: "in the", t: "garden", tier: 0 }, { det: "in the", t: "orchard", tier: 0 }, { det: "on the", t: "porch", tier: 0 }, { det: "at the", t: "bakery", tier: 0 },
+        { det: "in the", t: "laundromat", tier: 0 }, { det: "on the", t: "pier", tier: 0 }, { det: "in the", t: "hallway", tier: 0 }, { det: "in a", t: "field", tier: 0 },
+        { det: "at the", t: "lake", tier: 0 }, { det: "in the", t: "car", tier: 0 }, { det: "in the", t: "chapel", tier: 1 }, { det: "in the", t: "observatory", tier: 1 },
+        { det: "at the", t: "edge of the map", tier: 1 }, { det: "in the", t: "weather of a photograph", tier: 2 }, { det: "on the", t: "underside of the moon", tier: 2 },
+        { det: "in a", t: "hospital corridor", tier: 1 }, { det: "at the", t: "bottom of a well", tier: 1 }, { det: "beside a", t: "closed theater", tier: 1 },
+        { det: "in the", t: "inside of a bell", tier: 2 }, { det: "in a", t: "city of paper", tier: 2 }, { det: "under a", t: "second sky", tier: 2 },
+      ] },
+      { k: "c", name: "clause", opt: true, trailing: true, frame: "in the kitchen ___", hint: "Trails the place: “after the rain”.", pool: [
+        { t: "after the rain", tier: 0 }, { t: "before anyone wakes", tier: 0 },
+        { t: "nobody visits", tier: 1 }, { t: "that smells of oranges", tier: 1 },
+        { t: "where clocks are buried", tier: 2 }, { t: "that is also {image}", tier: 2 },
+      ] },
+    ],
+    grow: ["q", "c"],
+  },
+  time: {
+    parts: [
+      { k: "n", name: "time", frame: "___", hint: "When: “at dusk”, “in March”.", pool: [
+        { t: "at dusk", tier: 0 }, { t: "this morning", tier: 0 }, { t: "in March", tier: 0 }, { t: "after supper", tier: 0 }, { t: "all afternoon", tier: 0 },
+        { t: "in the year of the long rain", tier: 1 }, { t: "an hour before anyone", tier: 1 }, { t: "the day you left", tier: 1 },
+        { t: "on the eighth day of the week", tier: 2 }, { t: "at the end of a sentence", tier: 2 }, { t: "before time was invented", tier: 2 },
+      ] },
+    ],
+    grow: [],
+  },
+};
+
+// Poem forms set `lines: true`: each beat is its own line, each paragraph a stanza.
+const POEM_FORMS = {
+  couplets: {
+    name: "Couplets",
+    lines: true,
+    stanzas: [
+      { name: "One line", slots: ["image", "motion", "where", "time"], paras: [] },
+      { name: "A couplet", slots: ["image", "motion", "where", "time"], paras: [["echo"]] },
+      { name: "Two couplets", slots: ["image", "motion", "where", "time"], paras: [["echo"], ["second", "close"]] },
+      { name: "With a coda", slots: ["image", "motion", "where", "time"], paras: [["echo"], ["second", "close"], ["coda"]] },
+    ],
+    beats: {
+      echo: { name: "the echo", lines: [
+        B(0, "Nothing else moves."),
+        B(0, "{Image}, and then not."),
+        B(1, "Even {where}, something is listening."),
+        B(1, "{Image} is never only itself."),
+        B(2, "The light takes notes."),
+      ] },
+      second: { name: "the second look", lines: [
+        B(0, "I stand there longer than I meant to."),
+        B(0, "Someone is cooking somewhere."),
+        B(1, "The hour forgets which way it was going."),
+        B(2, "A door opens onto another door."),
+      ] },
+      close: { name: "the close", lines: [
+        B(0, "{Time}, and then not."),
+        B(1, "That is all the morning would admit."),
+        B(2, "And the poem, embarrassed, leaves."),
+      ] },
+      coda: { name: "the coda", lines: [
+        B(0, "Remember {image}."),
+        B(1, "{Where}: keep it."),
+        B(2, "Wake {image}, gently, in reverse."),
+      ] },
+    },
+  },
+  refrain: {
+    name: "Refrain",
+    lines: true,
+    stanzas: [
+      { name: "The refrain", slots: ["image", "motion", "where", "time"], paras: [] },
+      { name: "A verse", slots: ["image", "motion", "where", "time"], paras: [["verse", "refrain"]] },
+      { name: "Two verses", slots: ["image", "motion", "where", "time"], paras: [["verse", "refrain"], ["verse2", "refrain"]] },
+    ],
+    beats: {
+      verse: { name: "the verse", lines: [
+        B(0, "{Where}, everything keeps its distance."),
+        B(0, "Outside, a car. Then quiet."),
+        B(1, "The walls hold what they were told."),
+        B(2, "The furniture is dreaming of trees."),
+      ] },
+      verse2: { name: "the second verse", lines: [
+        B(0, "I come back, {time}."),
+        B(1, "Nobody has moved the chairs."),
+        B(2, "The house has learned my name and spends it."),
+      ] },
+      refrain: { name: "the refrain", lines: [
+        B(0, "{Image} {motion}."),
+        B(1, "And still, {image} {motion}."),
+        B(2, "{Image} {motion}, as it always will."),
+      ] },
+    },
+  },
+};
+
+const POEM_GRAMMAR = {
+  id: "small-poems",
+  name: "Small Poems",
+  description: "An image, what it does, where, and when. No joke to land: the dial lets the parts stop agreeing, in sound and in register.",
+  maxDepth: 1,
+  cards: [
+    { key: "image", label: "Image", hint: "the image" },
+    { key: "motion", label: "Motion", hint: "what it does" },
+    { key: "where", label: "Place", hint: "the place" },
+    { key: "time", label: "Time", hint: "the time" },
+  ],
+  headline: "The line",
+  pronouns: null,
+  moodCard: null,
+  line: "{image} {motion} {where}, {time}.",
+  schemas: POEM_SCHEMAS,
+  forms: POEM_FORMS,
+  rules: {
+    landing: false,
+    dialName: "Strangeness",
+    dialLabels: ["Literal", "Figurative", "Surreal"],
+    dialNotes: [
+      "Everything agrees: image and place share a sound, motion and time a register.",
+      "The image and the place stop sharing a sound.",
+      "Nothing agrees. Let it be strange.",
+    ],
+    pairs: [
+      { a: "image", b: "where", on: "sound", label: "image ↔ place (sound)" },
+      { a: "motion", b: "time", on: "register", label: "motion ↔ time (register)" },
+    ],
+    grounded: "motion",
+  },
+};
+GRAMMARS[POEM_GRAMMAR.id] = POEM_GRAMMAR;

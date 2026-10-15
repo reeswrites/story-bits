@@ -256,7 +256,8 @@ function tokens(schema, ph, who, slot, path = [], ghosts = false) {
   }
   // Determiner: an article card takes a/an; a head word with a determiner brings its own.
   let det = SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
-  if (det === "a" || det === "an") det = /^[aeiou]/i.test(firstText(out)) ? "an" : "a";
+  // "a"/"an" agree with the next word, also after a preposition ("under an old stair").
+  if (/(^|\s)an?$/.test(det)) det = det.replace(/an?$/, /^[aeiou]/i.test(firstText(out)) ? "an" : "a");
   if (det) out.unshift({ text: det });
   return out;
 }
@@ -268,6 +269,9 @@ function firstText(toks) {
   return "";
 }
 const flat = (toks) => toks.filter((t) => !t.ghost && t.word !== "").map((t) => (t.group ? flat(t.group) : t.word ?? t.text)).join(" ");
+
+// Cards are colored by position, so any grammar's cards get the palette in order.
+const cardClass = (key) => `k${Math.max(0, SLOTS.findIndex((c) => c.key === key)) % 6}`;
 
 // Whose pronouns the beats and headline use: the grammar's pronoun card, or "they".
 const person = () => (G.pronouns && state.pick[G.pronouns] ? word(G.pronouns, state.pick[G.pronouns], "n") : THEY);
@@ -294,7 +298,7 @@ function tokHtml(toks, slot, capFirst) {
   }).join(" ");
 }
 const phraseHtml = (slot, capFirst = false) =>
-  `<span class="ph top b-${slot}">${tokHtml(tokens(slot, state.pick[slot], person(), slot, [], true), slot, capFirst)}</span>`;
+  `<span class="ph top ${cardClass(slot)}">${tokHtml(tokens(slot, state.pick[slot], person(), slot, [], true), slot, capFirst)}</span>`;
 
 // Everything the headline and beats need: each card's text, the pronouns, and the mood that
 // picks by-mood beat lines.
@@ -372,7 +376,7 @@ function story(ctx) {
     if (state.view) return `<span class="beat-s${viewChanged(`beat|${key}`) ? " changed" : ""}">${fill(line.t, ctx)}</span>`;
     const pinned = state.pins.includes(`beat|${key}`);
     return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}" tabindex="0" role="button" aria-label="Tune ${esc(beatGroup(key).name)}">${fill(line.t, ctx)}</span>`;
-  }).join(" "));
+  }).join(form().lines ? "<br>" : " "));
 }
 
 // ---------- picking under the dial ----------
@@ -1225,15 +1229,18 @@ function render() {
 
   const inPlay = stanza().slots;
   $("#legend").innerHTML = SLOTS.filter((s) => inPlay.includes(s.key)).map((s) =>
-    `<button class="chip b-${s.key}" data-roll="${s.key}" title="Reroll ${s.hint}, keeping pinned words">${s.label} <span aria-hidden="true">↻</span></button>`).join("");
+    `<button class="chip ${cardClass(s.key)}" data-roll="${s.key}" title="Reroll ${s.hint}, keeping pinned words">${s.label} <span aria-hidden="true">↻</span></button>`).join("");
 
   renderGameBar();
+  document.body.classList.toggle("verse", !!form().lines);
   $("#bit").innerHTML = bitHtml(ctx);
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
 
   $("#grammar-pick").innerHTML = allGrammars().map((g) =>
     `<option value="${esc(g.id)}" ${g.id === G.id ? "selected" : ""}>${esc(g.name)}${library[g.id] ? " (yours)" : ""}</option>`).join("");
   $("#grammar-desc").textContent = [G.description, ...(G.rules.constraints || []).map(describeConstraint).filter(Boolean).map((x) => cap(x) + ".")].filter(Boolean).join(" ");
+  $("#headline-name").textContent = G.headline || "The line";
+  $("#dial-name").textContent = G.rules.dialName || "Dial";
   document.querySelectorAll(".dial button[data-dial]").forEach((b) => { b.textContent = G.rules.dialLabels[+b.dataset.dial]; });
   $("#forms").innerHTML = Object.entries(FORMS).map(([k, f]) =>
     `<button data-form="${k}" aria-pressed="${k === state.form}">${esc(f.name)}</button>`).join("");
