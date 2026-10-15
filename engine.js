@@ -133,13 +133,15 @@ function allowed(schema, ph, part) {
   if (part.needs === "adj") return !!word(schema, ph, "n").adj;
   return part.needs in ph.w;
 }
-// Every value a slot can take at this depth: the grammar's words that pass its constraints,
+// Every value a slot can take at this depth: the grammar's live words that pass its constraints,
 // then your bank's words for this grammar (unless the grammar is closed).
 function options(schema, part, depth) {
-  const out = part.pool.map((_, i) => i).filter((i) => (depth < MAX_DEPTH || !nests(part.pool[i])) && entryAllowed(part.pool[i], G));
+  // A retired word (retired: true, see grammar-ops.js) keeps its place in the pool so saved pieces
+  // still resolve it, but is never offered.
+  const out = part.pool.map((_, i) => i).filter((i) => !part.pool[i].retired && (depth < MAX_DEPTH || !nests(part.pool[i])) && entryAllowed(part.pool[i], G));
   if (!state.shared && !grammarClosed(G)) for (const e of bank) if (gOf(e) === G.id && e.s === schema && e.k === part.k && !checkEntry(e, G)) out.push(asValue(e));
   // A constraint that rules out every word in a required slot: fall back to the whole pool.
-  if (!out.length && !part.opt) return part.pool.map((_, i) => i).filter((i) => depth < MAX_DEPTH || !nests(part.pool[i]));
+  if (!out.length && !part.opt) return part.pool.map((_, i) => i).filter((i) => !part.pool[i].retired && (depth < MAX_DEPTH || !nests(part.pool[i])));
   return out;
 }
 

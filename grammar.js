@@ -214,11 +214,15 @@ function checkGrammar(g) {
       if (p.needs !== undefined && p.needs !== "adj" && !pk.has(p.needs)) return `card "${key}" slot "${p.k}" needs a slot that doesn't exist`;
       if (p.det !== undefined && (!Array.isArray(p.det) || !p.det.length || !p.det.every((d) => typeof d === "string" && d.length <= 12))) return `card "${key}" slot "${p.k}": det is a short list of starting words`;
       if (!Array.isArray(p.pool) || !p.pool.length || p.pool.length > 300) return `card "${key}" slot "${p.k}" needs 1–300 words`;
+      // A retired word (retired: true) stays in the pool so saved pieces keep their indices, but at
+      // least one live word must remain for the slot to offer.
+      if (!p.pool.some((w) => w && !w.retired)) return `card "${key}" slot "${p.k}" needs at least one word that isn't retired`;
       for (const w of p.pool) {
+        if (w && w.retired !== undefined && w.retired !== true) return `card "${key}" slot "${p.k}": retired is true or absent`;
         if (!w || typeof w.t !== "string" || !w.t.trim() || w.t.length > 120 || /[<>]/.test(w.t) || !tokenOk(w.t)) return `card "${key}" slot "${p.k}": bad word ${JSON.stringify(w?.t ?? w)}`;
         if (![0, 1, 2].includes(w.tier)) return `card "${key}" slot "${p.k}": every word needs a tier 0–2`;
         if (p.mood && ![-1, 0, 1].includes(w.v)) return `card "${key}" slot "${p.k}": every word needs a mood -1, 0 or 1`;
-        if (p.det && !p.det.includes(w.det)) return `card "${key}" slot "${p.k}": every word needs a starting word from its list`;
+        if (p.det && !w.retired && !p.det.includes(w.det)) return `card "${key}" slot "${p.k}": every word needs a starting word from its list`;
         if (p.pronouns && !PRONOUN_TOKENS.every((t) => typeof w[t] === "string")) return `card "${key}" slot "${p.k}": every word needs pronouns`;
       }
     }

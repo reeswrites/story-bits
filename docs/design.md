@@ -239,6 +239,38 @@ safe-area insets) replaces the inline buttons and hides while the picker sheet o
 History is a full-height sheet (a side panel on wider screens), a modal dialog with focus kept
 inside; Compare becomes horizontal scroll-snap cards. Desktop keeps the inline controls.
 
+## Editing a grammar from the picker
+
+`grammar-ops.js` (`window.grammarOps`, a plain script after `engine.js`, no DOM or storage) is the
+engine half of tuning a grammar word by word from the picker. Every operation takes a grammar and
+returns a **new** one; the input is never mutated. Results are `{ grammar, label }`, or `{ error }`
+(a plain-language reason) when the edit is refused or would fail `checkGrammar`: an invalid grammar
+is never returned. Labels read like `added 'ugly' to Who · descriptor`, for the undo timeline.
+
+**Indices never shift.** Links and saved pieces name a word by its pool index, so removing a word
+is a tombstone: `{ ..., retired: true }` stays in the pool. `options()` never offers a retired word
+and `checkGrammar` requires at least one live word per slot, but `entryOf` still resolves the index,
+so an old snapshot renders unchanged. Re-adding a retired word's text revives it in place.
+A pool holds at most 300 entries, tombstones included. (The library editor's `✕` still splices;
+it should call `removeWord` instead.)
+
+| call | what it does |
+|---|---|
+| `addWord(g, card, slot, entry)` | `entry` = `{ t, tier, v?, det?, pr? }` as `checkEntry` takes it; appends (or revives) |
+| `removeWord(g, card, slot, index)` / `restoreWord(...)` | tombstone / bring back; the last live word can't go |
+| `setWordTags(g, card, slot, index, { tier?, v?, det?, pr? })` | register, mood, starting word, pronouns; text and index stay |
+| `setDeterminers(g, card, slot, list)` | the slot's starting words; refused while a live word would lose its own |
+| `addSlot(g, card, def, position?)` | `def` = `{ name, pool, k?, needs?, det?, mood?, pronouns?, trailing? }`; always optional, so existing pieces still work; joins `grow` |
+| `removeSlot(g, card, k)` | optional slots only (never `n`), and not one another slot `needs` |
+| `forkOnWrite(g, ctx?)` | `g` itself if it's in your library; otherwise a copy: new id, `forkedFrom`, name `<name> (yours)`, shared/pack/space marks dropped. `{ grammar, label, forked, from? }` |
+| `apply(g, op, ...args)` | fork if needed, then run the op: the one call the picker makes. Label gains ` (in your own copy)` on a fork |
+| `remapPiece(snap, oldG, newG, { ref? })` | carries a piece snapshot onto the edited grammar: drops a removed slot's value and pins, rewrites `g`/`gx` (v3, `lv` = the local version number the edit was saved as), or `gs`/`gv` (v4) when `ref = { sp, ver, pub }` pins a space version. `{ snapshot }` or `{ error }` |
+
+`ctx` (`{ library, rand }`) defaults to the page's `library` and `Math.random`. Local means "in
+`library`, not built in, not `shared`"; built-ins, pack grammars and space versions are forked.
+Wiring order for a caller: `apply` → save `grammar` (library or a new space version) → `remapPiece`
+the open snapshot → record `label` in the undo timeline. Tests: `test/grammar-ops.test.mjs`.
+
 ## What's stored
 
 In your browser: grammars you've added and their versions, drafts, your word bank, your kept shelf, and the spaces you've joined
