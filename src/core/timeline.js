@@ -161,7 +161,7 @@ function slotName(schema, k, g = G) {
   const part = g.schemas[schema]?.parts.find((p) => p.k === k);
   return `${card ? card.label : schema} · ${part ? part.name : k}`;
 }
-const quote = (t) => `“${String(t).replace(/\{thing\}/g, "…").trim()}”`;
+const quote = (t) => `“${String(t).replace(/\{\w+\}/g, "…").trim()}”`;
 // The word at a path in a phrase, as text with pronouns filled in, and where it sits.
 function wordAt(slot, ph, path, who) {
   const at = ph && locate(slot, ph, path);
@@ -195,7 +195,14 @@ function pieceLabel(from, to) {
     }
     const cards = [...new Set(paths.map(([k]) => k))];
     if (cards.length === 1) return `rerolled ${SLOTS.find((c) => c.key === cards[0])?.label || cards[0]}`;
-    if (cards.length > 1) return "shuffled";
+    if (cards.length > 1) {
+      // Say what moved: the first changed word, and how many others went with it.
+      // (the longest new word, so “a” → “her” doesn't stand for the whole shuffle)
+      const said = paths.filter(([, p]) => p).map(([slot, path]) => [wordAt(slot, from.pick[slot], path, whoIn(from.pick)), wordAt(slot, to.pick[slot], path, whoIn(to.pick))]).filter(([a, b]) => a && b);
+      const [a, b] = said.sort((x, y) => y[1].text.length - x[1].text.length)[0] || [];
+      if (a && b) return `shuffled: ${quote(a.text)} → ${quote(b.text)}${paths.length > 1 ? ` and ${paths.length - 1} more` : ""}`;
+      return "shuffled";
+    }
     if (from.len !== to.len) return to.len > from.len ? `added a stanza (${to.len})` : `cut a stanza (${to.len})`;
     if (from.seed !== to.seed) return "retold";
     const beats = [...new Set([...Object.keys(from.beats), ...Object.keys(to.beats)])].filter((k) => from.beats[k] !== to.beats[k]);
@@ -204,6 +211,15 @@ function pieceLabel(from, to) {
       return to.beats[beats[0]] === undefined ? `${name}: back to the dice` : `retuned the line: ${name}`;
     }
     if (beats.length) return "retuned lines";
+    const pinned = (to.pins || []).filter((k) => !(from.pins || []).includes(k));
+    const unpinned = (from.pins || []).filter((k) => !(to.pins || []).includes(k));
+    const pk = pinned[0] || unpinned[0];
+    if (pk && !pk.startsWith("beat|")) {
+      const [slot, path] = [pk.split("|")[0], pk.split("|")[1]];
+      const w = wordAt(slot, (pinned.length ? to : from).pick[slot], path ? path.split(".") : [], whoIn(to.pick));
+      return `${pinned.length ? "pinned" : "unpinned"}${w ? ` ${quote(w.text)}` : " a word"}`;
+    }
+    if (pk) return pinned.length ? "pinned a line" : "unpinned a line";
     return "changed the piece";
   });
 }

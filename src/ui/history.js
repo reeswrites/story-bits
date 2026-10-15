@@ -29,8 +29,8 @@ let histNow = null; // { at, key, ctx }: the piece as of the last render
 let histQuiet = false;
 let histHint = null;
 const histCtx = () => (state.game ? `g:${challengeId(state.game.c)}` : state.room ? `r:${state.room.code}` : "solo");
-const histTake = () => ({ G, pick: clone(state.pick), beats: { ...state.beats }, form: state.form, len: state.len, dial: state.dial, seed: state.seed });
-const histKey = (h) => JSON.stringify([h.G.id, srcOf.get(h.G)?.ver, localVer.get(h.G)?.n, h.pick, h.beats, h.form, h.len, h.dial, h.seed]);
+const histTake = () => ({ G, pick: clone(state.pick), beats: { ...state.beats }, form: state.form, len: state.len, dial: state.dial, seed: state.seed, pins: [...state.pins] });
+const histKey = (h) => JSON.stringify([h.G.id, srcOf.get(h.G)?.ver, localVer.get(h.G)?.n, h.pick, h.beats, h.form, h.len, h.dial, h.seed, h.pins]);
 const hintNext = (label) => { histHint = label; };
 function quietly(fn) {
   const was = histQuiet;
@@ -50,7 +50,12 @@ function histNote() {
   }
   if (histNow.at.G === at.G && histNow.key === key) { renderUndo(); return; }
   if (!histQuiet && !state.room?.applying) {
-    tlRecord(timeline, { kind: "piece", label: histHint || pieceLabel(histNow.at, at), from: histNow.at, to: at });
+    // A word typed in the picker also joins your bank, one step just before this one: fold them
+    // into one, so every Undo changes something you can see.
+    const prev = timeline.done[timeline.done.length - 1];
+    const bankStep = prev?.kind === "bank" && Date.now() - prev.at < 40 ? timeline.done.pop() : null;
+    const label = histHint || pieceLabel(histNow.at, at);
+    tlRecord(timeline, { kind: "piece", label: bankStep ? `${label} (also in your word bank)` : label, from: histNow.at, to: at, ...(bankStep && { bank: bankStep }) });
     if (state.sel) countTune();
   }
   histHint = null;
@@ -78,12 +83,15 @@ function histPut(want, was) {
   }
   state.beats = beats;
   for (const f of ["form", "len", "dial", "seed"]) if (want[f] !== was[f]) state[f] = want[f];
+  const pw = want.pins || [], pv = was.pins || [];
+  state.pins = [...state.pins.filter((k) => !pv.includes(k) || pw.includes(k)), ...pw.filter((k) => !pv.includes(k) && !state.pins.includes(k))];
   state.len = Math.max(1, Math.min(maxLen(), state.len));
 }
 const canTune = () => !(state.room && jamReadOnly());
 onUndo("piece", (_, e, back) => {
   if (!canTune()) return false;
   if (back) histPut(e.from, e.to); else histPut(e.to, e.from);
+  if (e.bank) undoers.bank(back ? e.bank.before : e.bank.after);
   render();
 });
 

@@ -114,11 +114,7 @@ document.addEventListener("submit", (e) => {
     const input = e.target.elements.own;
     if (state.sel) useOwn(state.sel.slot, state.sel.path, input.value);
   } else if (e.target.id === "bank-form") {
-    const entry = formEntry();
-    if (addToBank([entry])) {
-      toast(`Added “${entry.t}” to your word bank. It'll turn up in shuffles.`);
-      $("#bf-text").value = "";
-    }
+    if (!bankSubmit()) return;
     renderBank();
     updateBankForm();
     render();

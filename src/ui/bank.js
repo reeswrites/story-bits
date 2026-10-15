@@ -61,7 +61,23 @@ function keepBit() {
   const before = clone(shelf);
   const c = addToShelf({ g: G.id, card, ph: clone(state.pick[card]), bits: [bitLine(context())] });
   if (!same(before, shelf)) remember("shelf", `kept ${keptText(card, c.ph)}`, before, shelf);
-  toast(`Kept. ${cap(keptText(card, c.ph))}: ${headlineCount(c.bits.length)} so far.`);
+  toast(`Kept · on your shelf: ${cap(keptText(card, c.ph))}`, { label: "Open shelf", fn: openShelf });
+  flashShelf();
+}
+// Open the shelf fold (named "The cast", "Your material"… per grammar) and bring it into view.
+function openShelf() {
+  const d = document.querySelector('details[data-fold="cast"]');
+  if (!d) return;
+  d.open = true;
+  d.dispatchEvent(new Event("toggle"));
+  d.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function flashShelf() {
+  const s = document.querySelector('details[data-fold="cast"] > summary');
+  if (!s) return;
+  s.classList.remove("kept-flash");
+  void s.offsetWidth;
+  s.classList.add("kept-flash");
 }
 // Pin a kept phrase and shuffle everything else: a new piece around something kept.
 function tellAnother(i) {
@@ -132,6 +148,10 @@ function renderShelf() {
   const el = $("#cast");
   const k = keepOf(G);
   $("#cast-h").textContent = k.name;
+  const n = shelfHere().length;
+  let badge = $("#cast-count");
+  if (!badge) { badge = document.createElement("span"); badge.id = "cast-count"; badge.className = "count"; $("#cast-h").after(badge); }
+  badge.textContent = n ? `${n} kept` : "";
   $("#keep").firstChild.textContent = k.verb + " ";
   $("#keep .menu-note").textContent = `adds ${k.card === G.pronouns ? "them" : "it"} to ${shelfName(G)}`;
   const help = $(".cast-wrap .help");
@@ -161,7 +181,7 @@ function renderBankForm() {
   const sel = $("#bf-slot");
   const keep = sel.value;
   sel.innerHTML = SLOTS.map((s) => `<optgroup label="${esc(s.label)}">${SCHEMAS[s.key].parts.map((p) =>
-    `<option value="${s.key}.${p.k}">${esc(s.label)}: ${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
+    `<option value="${s.key}.${p.k}">${esc(s.label)}: ${esc((p.frame || p.name).replace("{det}", "a"))}</option>`).join("")}</optgroup>`).join("");
   // Default to a describing slot if the grammar has one, else the first slot.
   const fallback = SLOTS.flatMap((s) => SCHEMAS[s.key].parts.filter((p) => p.k === "q").map((p) => `${s.key}.${p.k}`))[0];
   sel.value = [...sel.options].some((o) => o.value === keep) ? keep : fallback || sel.options[0].value;
@@ -198,7 +218,23 @@ function updateBankForm() {
   $("#bf-hint").textContent = [part.hint || `A word for “${part.name}”.`, rules.length ? `This grammar: ${rules.join("; ")}.` : ""].filter(Boolean).join(" ");
   const err = grammarClosed(G) ? "This grammar is closed: it only uses its own words. Fork it to add some." : e.t ? checkEntry(e, G) || (builtinHas(e) || bank.some((b) => sameWord(b, e)) ? "Already in the bank." : "") : "";
   $("#bf-error").textContent = err;
-  $("#bf-add").disabled = !e.t || !!err;
+  // Never disabled: pressing it with nothing typed (or a word that won't fit) says why (bankSubmit).
+  $("#bf-add").disabled = false;
+}
+// The form's Add: true if a word went in. Otherwise the reason shows under the preview.
+function bankSubmit() {
+  const entry = formEntry();
+  const input = $("#bf-text");
+  if (!entry.t) {
+    $("#bf-error").textContent = "Type a word or phrase to add first.";
+    input.focus();
+    return false;
+  }
+  if ($("#bf-error").textContent) { input.focus(); return false; }
+  if (!addToBank([entry])) { $("#bf-error").textContent = "That word can't be added here."; return false; }
+  toast(`Added “${entry.t}” to your word bank. It'll turn up in shuffles.`);
+  input.value = "";
+  return true;
 }
 function renderBank() {
   const el = $("#bank-list");

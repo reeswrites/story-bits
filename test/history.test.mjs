@@ -187,7 +187,7 @@ test("each step gets a plain label", () => {
   assert.equal(r.add, `added “${r.d0}” to Who · descriptor`);
   assert.equal(r.remove, `removed “${r.d0}” from Who · descriptor`);
   assert.match(r.reroll, /^(rerolled What happened|“.*” → “.*” in What happened · .*|added .*|removed .*)$/);
-  assert.equal(r.shuffle, "shuffled");
+  assert.match(r.shuffle, /^shuffled(: “.*” → “.*”( and \d+ more)?)?$/);
   assert.equal(r.form, "form: Local news");
   assert.equal(r.dial, "incongruity: Absurd");
   assert.equal(r.len, "cut a stanza (1)");
