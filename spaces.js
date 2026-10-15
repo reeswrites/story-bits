@@ -503,7 +503,7 @@ function itemHtml(s, it) {
     <div class="sp-item-top"><b>${esc(cleanWord(it.name))}</b>
       <span class="sp-acts">${acts}<button class="ghost" data-sp-notes="${esc(it.id)}" aria-expanded="${open}">💬 ${notes.length}</button>${can("edit") ? `<button class="bw-x" data-sp-remove="${esc(it.id)}" aria-label="Remove ${esc(cleanWord(it.name))}">✕</button>` : ""}</span></div>
     ${body}
-    ${open ? `<div class="jam-notes">${notes.map((c) => `<div class="note"><p><b>${esc(cleanWord(c.name) || "someone")}</b> ${esc(cleanWord(c.text))}</p>${c.mine || can("edit") ? `<div class="note-actions"><button data-sp-uncomment="${esc(c.id)}">Delete</button></div>` : ""}</div>`).join("")}
+    ${open ? `<div class="jam-notes">${notes.map((c) => `<div class="note"><p><b>${esc(cleanWord(c.name) || "someone")}</b> ${esc(cleanText(c.text))}</p>${c.mine || can("edit") ? `<div class="note-actions"><button data-sp-uncomment="${esc(c.id)}">Delete</button></div>` : ""}</div>`).join("")}
       ${can("comment") ? `<form class="jam-note-form" data-sp-comment="${esc(it.id)}" autocomplete="off"><input name="note" maxlength="600" placeholder="A note on this" aria-label="Comment"><button type="submit">Comment</button></form>` : ""}</div>` : ""}
   </li>`;
 }
@@ -610,7 +610,7 @@ document.addEventListener("submit", (e) => {
   else if (f.dataset.spComment) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    const text = cleanWord(f.elements.note.value);
+    const text = cleanText(f.elements.note.value);
     if (text) spaceOp(spaces.active, "comment", { item: f.dataset.spComment, text });
   }
 }, true);

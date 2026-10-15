@@ -429,7 +429,7 @@ document.addEventListener("submit", (e) => {
   if (!(f instanceof HTMLFormElement) || !f.matches(".jam-note-form")) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  const text = cleanWord(f.elements.note.value);
+  const text = cleanText(f.elements.note.value);
   if (!text) return;
   if (f.dataset.noteEntry) roomSend({ t: "comment", entry: f.dataset.noteEntry, text });
   else roomSend({ t: "comment", at: f.dataset.noteAt, quote: f.dataset.noteQuote, text });

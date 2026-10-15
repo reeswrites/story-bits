@@ -13,6 +13,10 @@ const PRONOUN_TOKENS = ["p", "o", "pos", "is", "has", "was", "s"];
 const TIER_NAMES = ["plausible", "odd", "absurd"];
 const MOOD_NAMES = { 1: "good", 0: "mixed", "-1": "bad" };
 
+// Comments and notes: like cleanWord, but sentences keep their punctuation ("is that a name?").
+function cleanText(t) {
+  return String(t ?? "").replace(/<[^>]*>/g, "").replace(/[{}<>]/g, "").replace(/\s+/g, " ").trim();
+}
 // Strip anything that could act as a template token or markup, collapse spaces, drop end punctuation.
 function cleanWord(t) {
   return String(t ?? "").replace(/<[^>]*>/g, "").replace(/[{}<>]/g, "").replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "");
