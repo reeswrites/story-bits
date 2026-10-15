@@ -27,7 +27,7 @@ Everything else:
 
 Which of these are open is remembered in this browser. In a jam or a challenge, its bar stays on the page.
 
-**Keyboard and screen readers**: words are buttons named for what they are (*landlord, Who: person*); each sentence has a tune button that shows when focused. The picker is a dialog: focus moves into it, ← → step, Escape closes it and returns focus to the word; on a phone it's a modal sheet and Tab stays inside it. Small text holds 6:1 contrast or better; nothing is faded unless it's done (a resolved comment), and unavailable buttons are outlined dashed rather than greyed.
+**Keyboard and screen readers**: words are buttons named for what they are (*landlord, Who: person*); each sentence has a tune button that shows when focused. The picker is a dialog: focus moves into it, ← → step, **1**–**3** use a preview, Escape closes it and returns focus to the word; on a phone it's a modal sheet and Tab stays inside it. Small text holds 6:1 contrast or better; nothing is faded unless it's done (a resolved comment), and unavailable buttons are outlined dashed rather than greyed.
 
 ## Everything is reversible
 
@@ -45,7 +45,15 @@ In a together jam, undoing a change to the piece goes out like any other edit an
 
 ## Writing alone
 
-- **Tap any word** to open it: **‹ ›** (or ← →) step it plain → strange, live; the full list grouped by register; *Surprise me*, *Pin* (shuffles keep it), *Remove*; or type your own.
+- **Tap any word** to open it. The word sits big at the top with **‹ plainer · stranger ›** (or ← →), stepping it live. Below it, **moves** go sideways instead of up the scale:
+  - **Sideways**: another word at the same register in the same slot, words that share a tag first (*uncle* → *aunt*). On a phone, swipe the word left or right.
+  - **Zoom out**: put the phrase inside a bigger one (*your uncle* → *your uncle's dentist*; *lost his dog* → *lost his dog thanks to a goose*).
+  - **Add**: fill an empty slot (*your uncle* → *your ugly uncle*).
+  - **Flip**: the opposite mood at about the same register (*thrilled* → *devastated*).
+  - **Sound**: alliterate with a word or phrase next to it.
+
+  Tap a move to see three previews, each the whole line with the change marked; **More** shows the next three. The one you're looking at (hovered or focused; on a phone, the first) shows in the piece itself, ghosted with a dashed outline, and nothing changes until you tap it (or press **1**–**3**). Moves with nothing to offer don't show. In a challenge each preview says which move it would be, or that it's over your limit. **All words** opens the full list grouped by register; *Surprise me*, *Pin* (shuffles keep it), *Remove*, or type your own.
+- **On a phone** the picker is a bottom sheet that takes at most about half the screen; the line you're tuning scrolls into view above it, and every button is a 44px target.
 - **Tap the rest of a sentence** to tune that line (the beat) the same way.
 - **Ghost slots**: with a word selected, dashed `+ adverb` / `+ clause` chips show where an optional word can go.
 - **Nesting**: some words hold a whole phrase of another card (*blames …*, *brought back from …*), tunable inside. Hover a word to see which phrase it belongs to.

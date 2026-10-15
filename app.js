@@ -49,33 +49,48 @@ function reroll(keys) {
   rerollPick(keys);
   render();
 }
-function setValue(slot, path, val) {
-  state.pick[slot] = variants(slot, path, [val])[0];
-  render();
+// What a word reads as right now, for history labels ("" if it isn't there).
+function wordNow(slot, path, top = state.pick[slot]) {
+  const at = top && locate(slot, top, path);
+  return at && at.k in at.ph.w ? wordText(at.schema, at.ph, at.k) : "";
+}
+// Moves (‹ › and the move chips) name their step "Stranger: uncle → dentist"; anything else
+// (a pick from the list, Surprise me, Remove) leaves it to the timeline's own wording.
+const MOVE_HOWS = ["Plainer", "Stranger"];
+const changeLabel = (how, a, b) => (MOVE_HOWS.includes(how) ? `${how}: ${a ? `${a} → ` : ""}${b}` : null);
+function setValue(slot, path, val, how = "Changed") {
+  const next = variants(slot, path, [val])[0];
+  changeWith(changeLabel(how, wordNow(slot, path), wordNow(slot, path, next)), () => { state.pick[slot] = next; });
 }
 // A random word for this slot, within the dial if possible.
 function surprise(slot, path) {
   const at = locate(slot, state.pick[slot], path);
   const vals = options(at.schema, partOf(at.schema, at.k), at.depth).filter((v) => !same(v, at.ph.w[at.k]));
   if (!vals.length) return;
+  const was = wordNow(slot, path);
+  const pick = { ...state.pick };
+  const saved = state.pick;
+  state.pick = pick;
   pickFrom(slot, variants(slot, path, vals));
-  render();
+  state.pick = saved;
+  changeWith(changeLabel("Surprise", was, wordNow(slot, path, pick[slot])), () => { state.pick[slot] = pick[slot]; });
 }
 // Fill an empty optional slot (a ghost), then open it in the picker.
 function addWord(slot, path) {
   const at = locate(slot, state.pick[slot], path);
   if (!at) return;
+  const pick = { ...state.pick };
+  const saved = state.pick;
+  state.pick = pick;
   pickFrom(slot, variants(slot, path, options(at.schema, partOf(at.schema, at.k), at.depth)));
-  state.sel = { slot, path, occ: 0 };
-  render();
+  state.pick = saved;
+  changeWith(changeLabel("Add", "", wordNow(slot, path, pick[slot])), () => { state.pick[slot] = pick[slot]; state.sel = { slot, path, occ: 0 }; });
 }
 function removeWord(slot, path) {
   const top = clone(state.pick[slot]);
   const at = locate(slot, top, path);
   dropWord(at.schema, at.ph, at.k);
-  state.pick[slot] = top;
-  state.sel = null;
-  render();
+  changeWith(null, () => { state.pick[slot] = top; state.sel = null; });
 }
 // A new telling: fresh beats from a new seed, except pinned beats, which keep their line.
 function retell() {
@@ -86,9 +101,11 @@ function retell() {
   if (state.sel && state.sel.beat) state.sel = null;
   render();
 }
-function setBeat(key, i) {
-  state.beats = { ...state.beats, [key]: i };
-  render();
+function setBeat(key, i, how = "Line") {
+  const ctx = context();
+  const lines = beatLines(key, ctx);
+  const was = lines[beatChoices(ctx)[key]];
+  changeWith(changeLabel(how, was && lineGist(was.t, ctx), lines[i] ? lineGist(lines[i].t, ctx) : beatGroup(key).name), () => { state.beats = { ...state.beats, [key]: i }; });
 }
 function togglePin(slot, path) {
   const key = `${slot}|${path.join(".")}`;
@@ -110,7 +127,7 @@ function useOwn(slot, path, text) {
   if (err) { toast(err); return; }
   if (addToBank([e])) toast(`Added “${t}” to your word bank.`);
   renderBank();
-  setValue(slot, path, asValue(e));
+  setValue(slot, path, asValue(e), "Your word");
 }
 
 // ---------- the picker ----------
@@ -129,6 +146,129 @@ function crumbs(slot, path) {
 }
 
 let pickerVals = [];
+// Moves in the picker: which move's previews are showing, the candidates, which three, and which
+// one is previewed in the piece. Reset when the selection changes.
+const PREVIEWS = 3;
+let pm = { key: null, move: null, cands: [], page: 0, ghost: -1 };
+function movesNow() {
+  const s = state.sel;
+  if (!s) return {};
+  if (s.beat) {
+    const ctx = context();
+    const cur = beatChoices(ctx)[s.beat];
+    const lines = beatLines(s.beat, ctx);
+    const side = beatSideways(s.beat, ctx).slice(0, MOVE_MAX).map((i) => ({ move: "sideways", beat: s.beat, i, label: `Sideways: ${lineGist(lines[cur].t, ctx)} → ${lineGist(lines[i].t, ctx)}` }));
+    return side.length ? { sideways: side } : {};
+  }
+  const out = {};
+  for (const m of MOVES) {
+    const c = moveCandidates(s.slot, s.path, m.key);
+    if (c.length) out[m.key] = c.map((x) => ({ ...x, slot: s.slot }));
+  }
+  return out;
+}
+const lineGist = (t, ctx) => { const s = fillText(t, ctx); return s.length > 28 ? s.slice(0, 26) + "…" : s; };
+// The line a selected word sits in: the beat it's in, or the headline.
+function selBeat() {
+  const s = state.sel;
+  if (!s) return null;
+  if (s.beat) return s.beat;
+  return selectedEl()?.closest(".beat")?.dataset.beat || null;
+}
+// A candidate as it would read, change marked.
+function candHtml(c) {
+  if (c.beat) {
+    const ctx = context();
+    return `<span class="w changed">${fill(beatLines(c.beat, ctx)[c.i].t, ctx)}</span>`;
+  }
+  return previewLine(c.slot, c.ph, c.changed, selBeat());
+}
+// In a challenge: what applying it would leave you at.
+function candMoves(c) {
+  if (!state.game || !state.game.c.n) return null;
+  const snap = fixedSnapshot();
+  if (c.beat) snap.b = { ...snap.b, [c.beat]: c.i };
+  else snap.p = { ...snap.p, [c.slot]: c.ph };
+  return changes(state.game.c.s, snap).length;
+}
+// Show a candidate in the piece itself, ghosted, without applying it (-1: none).
+function ghostCand(n) {
+  if (pm.ghost === n) return;
+  pm.ghost = n;
+  const c = pm.cands[n];
+  const saved = { pick: state.pick, beats: state.beats };
+  if (c) {
+    if (c.beat) { state.beats = { ...state.beats, [c.beat]: c.i }; state.ghost = new Set([`beat|${c.beat}`]); }
+    else { state.pick = { ...state.pick, [c.slot]: c.ph }; state.ghost = new Set(c.changed.map((p) => `${c.slot}|${p}`)); }
+  }
+  try { drawPiece(); } finally { Object.assign(state, saved); state.ghost = null; }
+  document.querySelectorAll("#picker .pk-pv").forEach((b) => b.classList.toggle("on", +b.dataset.pv === n));
+}
+// Apply a candidate: one change, recorded for undo with its label.
+function applyCand(c) {
+  if (!c) return;
+  pm.ghost = -1;
+  if (c.beat) changeWith(c.label, () => { state.beats = { ...state.beats, [c.beat]: c.i }; });
+  else changeWith(c.label, () => { state.pick[c.slot] = c.ph; });
+}
+// Make a change and render it, named for the undo timeline ("Sideways: uncle → aunt"). An outside
+// recorder (window.storyHistory) gets the change itself; otherwise the timeline's hintNext names
+// the step render() notes.
+function changeWith(label, fn) {
+  const h = window.storyHistory;
+  if (h?.record) {
+    const before = clone(snapshot());
+    fn();
+    quietly(render);
+    const after = clone(snapshot());
+    if (!same(before, after)) h.record(label || "Changed", before, after);
+    return;
+  }
+  if (label) hintNext(label);
+  fn();
+  render();
+}
+function pickMove(move) {
+  pm.move = pm.move === move ? null : move;
+  pm.page = 0;
+  pm.ghost = -1;
+  renderPicker();
+  if (pm.move && matchMedia("(hover: none)").matches) ghostCand(0);
+}
+// The move chips and, for the open move, three previews and "more".
+function movesHtml(all) {
+  const keys = MOVES.map((m) => m.key).filter((k) => all[k]);
+  if (!keys.length) return "";
+  if (pm.move && !all[pm.move]) pm.move = null;
+  pm.cands = pm.move ? all[pm.move] : [];
+  if (pm.page * PREVIEWS >= pm.cands.length) pm.page = 0;
+  const start = pm.page * PREVIEWS;
+  const shown = pm.cands.slice(start, start + PREVIEWS);
+  const budget = state.game?.c.n;
+  const chips = keys.map((k) => `<button class="pk-move" data-move="${k}" aria-pressed="${pm.move === k}" aria-controls="pk-previews">${esc(MOVES.find((m) => m.key === k).name)}</button>`).join("");
+  const previews = pm.move ? `<div class="pk-previews" id="pk-previews" role="group" aria-label="${esc(MOVES.find((m) => m.key === pm.move).name)}: tap one to use it">
+      ${shown.map((c, j) => {
+        const n = start + j;
+        const used = candMoves(c);
+        const cost = used === null ? "" : `<span class="pv-cost${used > budget ? " over" : ""}">${used > budget ? `over your ${budget} moves` : `move ${used} of ${budget}`}</span>`;
+        return `<button class="pk-pv${n === pm.ghost ? " on" : ""}" data-pv="${n}" aria-label="${esc(c.label)}"><span class="pv-n" aria-hidden="true">${j + 1}</span><span class="pv-line">${candHtml(c)}</span>${cost}</button>`;
+      }).join("")}
+      ${pm.cands.length > PREVIEWS ? `<button class="pk-more" data-act="more">More <span class="pv-of">${start + 1}–${start + shown.length} of ${pm.cands.length}</span></button>` : ""}
+    </div>` : "";
+  return `<div class="pk-moves" role="toolbar" aria-label="Moves">${chips}</div>${previews}`;
+}
+// The current word, big, with ‹ plainer · stranger ›. Swipe it sideways on a phone.
+function stepHtml(text, tier, idx, total, note) {
+  return `<div class="pk-step">
+      <button class="pk-arrow" data-act="prev" aria-label="Plainer" ${idx <= 0 ? "disabled" : ""}>‹</button>
+      <div class="pk-cur"><b>${text}</b>
+        <span class="pk-meta"><span class="tier t${tier}">${TIER_NAMES[tier]}</span> ${idx + 1} of ${total}${note}</span></div>
+      <button class="pk-arrow" data-act="next" aria-label="Stranger" ${idx >= total - 1 ? "disabled" : ""}>›</button>
+    </div>
+    <p class="pk-keys">‹ plainer · stranger ›<span class="pk-swipe"> · swipe for sideways</span><span class="pk-kbd"> · ← → · 1–3 use a preview</span></p>`;
+}
+const allWordsHtml = (groups, n, what) => `<details class="pk-all"${pm.allOpen ? " open" : ""}><summary>All ${what} <span class="pv-of">${n}</span></summary><div class="pk-list">${groups}</div></details>`;
+
 function renderBeatPicker(el, key) {
   const ctx = context();
   const cur = beatChoices(ctx)[key];
@@ -148,19 +288,14 @@ function renderBeatPicker(el, key) {
       <span class="pk-crumb" id="pk-title"><span class="sr">Tune: </span>Story › ${esc(beatGroup(key).name)}</span>
       <button class="pk-x" data-act="close" aria-label="Close">✕</button>
     </div>
-    <div class="pk-step">
-      <button class="pk-arrow" data-act="prev" aria-label="Plainer" ${idx <= 0 ? "disabled" : ""}>‹</button>
-      <div class="pk-cur"><b class="pk-sentence">${esc(fillText(line.t, ctx))}</b>
-        <span class="pk-meta"><span class="tier t${line.tier}">${TIER_NAMES[line.tier]}</span> ${idx + 1} of ${opts.length}${Number.isInteger(state.beats[key]) ? " · tuned" : ""}</span></div>
-      <button class="pk-arrow" data-act="next" aria-label="Stranger" ${idx >= opts.length - 1 ? "disabled" : ""}>›</button>
-    </div>
-    <p class="pk-keys">← plainer · stranger →</p>
+    ${stepHtml(`<span class="pk-sentence">${esc(fillText(line.t, ctx))}</span>`, line.tier, idx, opts.length, Number.isInteger(state.beats[key]) ? " · tuned" : "")}
+    ${movesHtml(movesNow())}
     <div class="pk-actions">
       <button data-act="surprise">Surprise me</button>
       ${state.game ? (selChanged() ? `<button data-act="putback">Put back</button>` : "") : `<button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>`}
       ${Number.isInteger(state.beats[key]) ? `<button data-act="untune">Back to the dice</button>` : ""}
     </div>
-    <div class="pk-list">${groups}</div>
+    ${allWordsHtml(groups, opts.length, "lines")}
     ${marksHtml()}
     ${state.room ? jamPickerHtml(`beat|${key}`, fillText(line.t, ctx)) : ""}`;
   el.classList.toggle("readonly", !!state.room && jamReadOnly());
@@ -175,6 +310,9 @@ function focusKeyOf(a) {
   if (!(a instanceof Element)) return null;
   if (a.dataset.act) return `[data-act="${a.dataset.act}"]`;
   if (a.dataset.opt !== undefined) return `[data-opt="${a.dataset.opt}"]`;
+  if (a.dataset.move) return `[data-move="${a.dataset.move}"]`;
+  if (a.dataset.pv !== undefined) return `[data-pv="${a.dataset.pv}"]`;
+  if (a.matches(".pk-all > summary")) return ".pk-all > summary";
   if (a.name) return `[name="${a.name}"]`;
   return null;
 }
@@ -192,17 +330,23 @@ function renderPicker() {
   const lost = !active || active === document.body;
   const again = focusIn && active !== el ? focusKeyOf(active) : null;
   const scrollTop = el.querySelector(".pk-list")?.scrollTop || 0;
-  drawPicker(el);
+  const movesLeft = el.querySelector(".pk-moves")?.scrollLeft || 0;
   const key = selKey(state.sel);
+  // A new word: no move open, the long list folded.
+  if (pm.key !== key) pm = { key, move: null, cands: [], page: 0, ghost: -1, allOpen: false };
+  pm.ghost = -1;
+  drawPicker(el);
+  document.body.classList.toggle("sheet-open", !el.hidden && el.classList.contains("sheet"));
   if (!el.hidden) {
     el.setAttribute("aria-modal", String(el.classList.contains("sheet")));
     const list = el.querySelector(".pk-list");
+    const chips = el.querySelector(".pk-moves");
     if (pickerFor?.key === key) {
       if (list) list.scrollTop = scrollTop;
+      if (chips) chips.scrollLeft = movesLeft;
       if (focusIn || lost) (again && el.querySelector(again)) ? el.querySelector(again).focus({ preventScroll: true }) : el.focus({ preventScroll: true });
     } else {
       el.focus({ preventScroll: true });
-      el.querySelector(".pk-opt.cur")?.scrollIntoView({ block: "nearest" });
     }
     pickerFor = { key, sel: state.sel };
   } else if (pickerFor) {
@@ -227,7 +371,7 @@ function drawPicker(el) {
   const idx = pickerVals.findIndex((v) => same(v, cur));
   const entry = entryOf(at.schema, at.k, cur);
   const pinned = state.pins.includes(`${sel.slot}|${sel.path.join(".")}`);
-  const label = (v) => pron(entryOf(at.schema, at.k, v).t, who).replace("{thing}", "…");
+  const label = (v) => pron(entryOf(at.schema, at.k, v).t, who).replace(/\{\w+\}/g, "…");
   const groups = [0, 1, 2].map((t) => {
     const items = pickerVals.map((v, i) => ({ v, i })).filter((x) => entryOf(at.schema, at.k, x.v).tier === t);
     if (!items.length) return "";
@@ -240,25 +384,20 @@ function drawPicker(el) {
       <span class="pk-crumb" id="pk-title"><span class="sr">Tune: </span>${crumbs(sel.slot, sel.path).map(esc).join(" › ")}</span>
       <button class="pk-x" data-act="close" aria-label="Close">✕</button>
     </div>
-    <div class="pk-step">
-      <button class="pk-arrow" data-act="prev" aria-label="Plainer" ${idx <= 0 ? "disabled" : ""}>‹</button>
-      <div class="pk-cur"><b>${esc(label(cur))}</b>
-        <span class="pk-meta"><span class="tier t${entry.tier}">${TIER_NAMES[entry.tier]}</span> ${idx + 1} of ${pickerVals.length}${entry.custom ? " · yours" : ""}</span></div>
-      <button class="pk-arrow" data-act="next" aria-label="Stranger" ${idx >= pickerVals.length - 1 ? "disabled" : ""}>›</button>
-    </div>
-    <p class="pk-keys">← plainer · stranger →</p>
+    ${stepHtml(esc(label(cur)), entry.tier, idx, pickerVals.length, entry.custom ? " · yours" : "")}
+    ${movesHtml(movesNow())}
     <div class="pk-actions">
       <button data-act="surprise">Surprise me</button>
       ${state.game ? (selChanged() ? `<button data-act="putback">Put back</button>` : "") : `<button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>`}
       ${part.opt ? `<button data-act="remove">Remove</button>` : ""}
       ${loreTarget() ? `<button data-act="lore" title="Keep the whole phrase in ${esc(loreTarget().name)}'s lore">Keep “${esc(phraseText(sel.slot).slice(0, 32))}” as lore</button>` : ""}
     </div>
-    <div class="pk-list">${groups}</div>
-    ${marksHtml()}
+    ${allWordsHtml(groups, pickerVals.length, "words")}
     <form class="pk-own" autocomplete="off">
       <input name="own" maxlength="60" placeholder="Your own ${esc(part.name)}…" aria-label="Your own ${esc(part.name)}">
       <button type="submit">Use</button>
     </form>
+    ${marksHtml()}
     ${state.room ? jamPickerHtml(`${sel.slot}|${sel.path.join(".")}`, label(cur)) : ""}`;
   el.classList.toggle("readonly", !!state.room && jamReadOnly());
   el.hidden = false;
@@ -272,23 +411,47 @@ function selectedEl() {
   const els = document.querySelectorAll(`.word[data-slot="${s.slot}"][data-path="${s.path.join(".")}"]`);
   return els[Math.min(s.occ || 0, els.length - 1)] || null;
 }
+// On a phone the picker is a bottom sheet (at most ~55% of the screen) and the line holding the
+// selected word stays in view above it. On a wider screen it's a popover under the word.
+const isSheet = () => innerWidth < 640;
 function positionPicker() {
   const el = $("#picker");
   const w = selectedEl();
   if (!w) return;
-  const r = w.getBoundingClientRect();
-  if (innerWidth < 640) {
-    // Bottom sheet; keep the word in view above it.
+  if (isSheet()) {
     el.classList.add("sheet");
     el.style.left = el.style.top = "";
-    const room = innerHeight - el.offsetHeight - 16;
-    if (r.bottom > room || r.top < 8) scrollBy({ top: r.top - Math.max(16, room - r.height - 40), behavior: "smooth" });
+    // After this frame's redraws (a ghosted preview can change the piece), so the scroll sticks.
+    clearTimeout(positionPicker.later);
+    positionPicker.later = setTimeout(() => keepSelInView());
     return;
   }
   el.classList.remove("sheet");
+  const r = w.getBoundingClientRect();
   const width = el.offsetWidth;
   el.style.left = `${Math.max(16, Math.min(r.left + scrollX, scrollX + innerWidth - width - 16))}px`;
   el.style.top = `${r.bottom + scrollY + 10}px`;
+}
+// Scroll so the selected word's line (its sentence, or the headline) sits above the sheet.
+function keepSelInView(smooth = true) {
+  const el = $("#picker");
+  const w = selectedEl();
+  if (!w || el.hidden || !el.classList.contains("sheet")) return;
+  const line = w.closest(".beat, #bit") || w;
+  const lr = line.getBoundingClientRect(), wr = w.getBoundingClientRect();
+  const top = (innerHeight - el.offsetHeight) - 12; // where the sheet starts, less a margin
+  // The whole line if it fits; else the word a third of the way down the room above the sheet,
+  // with what comes before and after it.
+  let dy = 0;
+  if (lr.height <= top - 12) {
+    if (lr.bottom > top) dy = lr.bottom - top;
+    if (lr.top - dy < 8) dy = lr.top - 8;
+  } else dy = wr.top - Math.max(8, (top - wr.height) / 3);
+  if (Math.abs(dy) <= 2) return;
+  const from = scrollY;
+  scrollBy({ top: dy, behavior: smooth && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto" });
+  // Where smooth scrolling doesn't start (some embedded views), jump instead.
+  if (smooth) setTimeout(() => { if (scrollY === from) scrollBy({ top: dy }); }, 250);
 }
 
 function selectBeat(key) {
@@ -299,7 +462,7 @@ function surpriseBeat(key) {
   const ctx = context();
   const cur = beatChoices(ctx)[key];
   const opts = beatOptions(key, ctx).map((x) => x.i).filter((i) => i !== cur);
-  if (opts.length) setBeat(key, opts[rand(opts.length)]);
+  if (opts.length) setBeat(key, opts[rand(opts.length)], "Surprise");
 }
 function select(slot, path, el) {
   const els = [...document.querySelectorAll(`.word[data-slot="${slot}"][data-path="${path.join(".")}"]`)];
@@ -315,14 +478,22 @@ function step(dir) {
     const ctx = context();
     const opts = beatOptions(s.beat, ctx).map((x) => x.i);
     const i = opts.indexOf(beatChoices(ctx)[s.beat]) + dir;
-    if (i >= 0 && i < opts.length) setBeat(s.beat, opts[i]);
+    if (i >= 0 && i < opts.length) setBeat(s.beat, opts[i], dir < 0 ? "Plainer" : "Stranger");
     return;
   }
   const at = locate(s.slot, state.pick[s.slot], s.path);
   const vals = pickerOptions(at);
   const i = vals.findIndex((v) => same(v, at.ph.w[at.k])) + dir;
   if (i < 0 || i >= vals.length) return;
-  setValue(s.slot, s.path, vals[i]);
+  setValue(s.slot, s.path, vals[i], dir < 0 ? "Plainer" : "Stranger");
+}
+// Swipe the current word (or line) sideways: left for the next one at this register, right
+// for the one before.
+function sideStep(dir) {
+  const c = movesNow().sideways;
+  if (!c?.length) return false;
+  applyCand(dir > 0 ? c[0] : c[c.length - 1]);
+  return true;
 }
 
 // ---------- the kept shelf (phrases you keep coming back to) ----------
@@ -453,7 +624,7 @@ function leaveGame() {
 function putBack() {
   const s = state.sel;
   const start = state.game.c.s;
-  if (s.beat) { setBeat(s.beat, start.b[s.beat]); return; }
+  if (s.beat) { setBeat(s.beat, start.b[s.beat], "Put back"); return; }
   const at = locate(s.slot, start.p[s.slot], s.path);
   if (at && at.k in at.ph.w) {
     const top = clone(state.pick[s.slot]);
@@ -461,8 +632,7 @@ function putBack() {
     here.ph.w[here.k] = clone(at.ph.w[here.k]);
     if (at.ph.sub?.[here.k]) { here.ph.sub = here.ph.sub || {}; here.ph.sub[here.k] = clone(at.ph.sub[here.k]); } else if (here.ph.sub) delete here.ph.sub[here.k];
     tidy(at.schema, here.ph);
-    state.pick[s.slot] = top;
-    render();
+    changeWith(changeLabel("Put back", wordNow(s.slot, s.path), wordNow(s.slot, s.path, top)), () => { state.pick[s.slot] = top; });
   } else removeWord(s.slot, s.path);
 }
 // Is the selected word or beat different from the start?
@@ -729,9 +899,7 @@ function render() {
 
   renderGameBar();
   document.body.classList.toggle("verse", !!form().lines);
-  $("#bit").innerHTML = bitHtml(ctx);
-  labelParts($("#bit"));
-  $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
+  drawPiece(ctx);
 
   $("#grammar-pick").innerHTML = grammarOptions();
   $("#grammar-desc").textContent = [G.description, ...(G.rules.constraints || []).map(describeConstraint).filter(Boolean).map((x) => cap(x) + ".")].filter(Boolean).join(" ");
@@ -758,6 +926,14 @@ function render() {
   if (state.room) jamAfterRender();
   histNote();
   placeFirstHint();
+}
+
+// The headline and the story. A preview (ghostCand) draws them with a change ghosted in.
+function drawPiece(ctx = context()) {
+  $("#bit").innerHTML = bitHtml(ctx);
+  labelParts($("#bit"));
+  $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
+  if (state.room) { paintPeers(); paintNotes(); }
 }
 
 // Switch to another grammar: a fresh piece in its first form.
@@ -934,10 +1110,11 @@ document.addEventListener("click", (e) => {
     else if (act === "prev") step(-1);
     else if (act === "next") step(1);
     else if (act === "putback") putBack();
+    else if (act === "more") { pm.page = (pm.page + 1) * PREVIEWS < pm.cands.length ? pm.page + 1 : 0; renderPicker(); if (matchMedia("(hover: none)").matches) ghostCand(pm.page * PREVIEWS); }
     else if (s.beat) {
       if (act === "surprise") surpriseBeat(s.beat);
       else if (act === "pin") togglePin("beat", [s.beat]);
-      else if (act === "untune") { const b = { ...state.beats }; delete b[s.beat]; state.beats = b; render(); }
+      else if (act === "untune") changeWith(null, () => { const b = { ...state.beats }; delete b[s.beat]; state.beats = b; });
     }
     else if (act === "surprise") surprise(s.slot, s.path);
     else if (act === "pin") togglePin(s.slot, s.path);
@@ -945,10 +1122,12 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (t.dataset.opt !== undefined) {
-    if (s.beat) setBeat(s.beat, pickerVals[+t.dataset.opt]);
-    else setValue(s.slot, s.path, pickerVals[+t.dataset.opt]);
+    if (s.beat) setBeat(s.beat, pickerVals[+t.dataset.opt], "Picked");
+    else setValue(s.slot, s.path, pickerVals[+t.dataset.opt], "Picked");
     return;
   }
+  if (t.dataset.move) { pickMove(t.dataset.move); return; }
+  if (t.dataset.pv !== undefined) { applyCand(pm.cands[+t.dataset.pv]); return; }
   if (inPicker || t.closest("#history") || ["tb-undo", "tb-redo", "tb-history"].includes(t.id) || t.dataset.libHistory || t.dataset.draftOpen || ["undo", "redo", "history-btn", "save-draft"].includes(t.id)) return;
   if (t.classList.contains("word")) { select(t.dataset.slot, pathOf(t), t); return; }
   if (t.dataset.beatBtn) { selectBeat(t.dataset.beatBtn); return; }
@@ -1056,6 +1235,44 @@ document.addEventListener("mouseover", (e) => {
   if (w) w.closest(".ph")?.classList.add("hl");
 });
 
+// A preview under the pointer or keyboard focus shows in the piece, ghosted; leaving puts it back.
+document.addEventListener("pointerover", (e) => {
+  const pv = e.target instanceof Element && e.target.closest("#picker .pk-pv");
+  if (pv && e.pointerType === "mouse") ghostCand(+pv.dataset.pv);
+});
+document.addEventListener("pointerout", (e) => {
+  const pv = e.target instanceof Element && e.target.closest("#picker .pk-pv");
+  if (pv && e.pointerType === "mouse" && !pv.contains(e.relatedTarget) && !$("#picker").contains(document.activeElement?.closest(".pk-pv"))) ghostCand(-1);
+});
+document.addEventListener("focusin", (e) => {
+  const pv = e.target instanceof Element && e.target.closest("#picker .pk-pv");
+  if (pv) ghostCand(+pv.dataset.pv);
+  else if (pm.ghost >= 0 && $("#picker").contains(e.target) && !matchMedia("(hover: none)").matches) ghostCand(-1);
+});
+document.addEventListener("toggle", (e) => {
+  if (e.target instanceof Element && e.target.matches("#picker .pk-all")) pm.allOpen = e.target.open;
+}, true);
+// Swipe the current word sideways (phones): left for the next, right for the one before.
+let swipe = null;
+document.addEventListener("touchstart", (e) => {
+  const cur = e.target instanceof Element && e.target.closest("#picker .pk-cur");
+  swipe = cur && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+}, { passive: true });
+document.addEventListener("touchend", (e) => {
+  if (!swipe) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+  swipe = null;
+  if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  if (state.room && jamReadOnly()) return;
+  const dir = dx < 0 ? 1 : -1;
+  if (sideStep(dir)) {
+    const b = $("#picker .pk-cur b");
+    b?.classList.add(dir > 0 ? "from-right" : "from-left");
+  }
+}, { passive: true });
+addEventListener("resize", () => { if (state.sel) positionPicker(); });
+
 // On the phone sheet the picker is modal: Tab cycles inside it.
 function trapPickerFocus(e) {
   const el = $("#picker");
@@ -1086,6 +1303,11 @@ document.addEventListener("keydown", (e) => {
     open.open = false;
     open.querySelector("summary").focus();
     return;
+  }
+  // 1–3 use a preview of the open move.
+  if (state.sel && !typing && /^[1-9]$/.test(e.key) && pm.move && !(state.room && jamReadOnly())) {
+    const n = pm.page * PREVIEWS + (+e.key - 1);
+    if (+e.key <= PREVIEWS && pm.cands[n]) { e.preventDefault(); applyCand(pm.cands[n]); return; }
   }
   if (state.sel && state.sel.beat && !typing) {
     const s = state.sel;

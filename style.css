@@ -170,6 +170,86 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
 }
 .pk-own input:focus, .bank-form input:focus, .bank-form select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
 
+/* ---- moves: the current word big, chips for lateral moves, three previews at a time ---- */
+.picker { width: 400px; }
+.pk-step .pk-cur { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.pk-cur b { font-size: 24px; }
+.pk-cur b .pk-sentence { display: block; font-size: 16px; font-weight: 500; line-height: 1.35; }
+.pk-cur b.from-right { animation: pk-in-r .18s ease-out; }
+.pk-cur b.from-left { animation: pk-in-l .18s ease-out; }
+@keyframes pk-in-r { from { transform: translateX(24px); opacity: .4; } }
+@keyframes pk-in-l { from { transform: translateX(-24px); opacity: .4; } }
+.pk-keys .pk-swipe { display: none; }
+@media (hover: none) {
+  .pk-keys { display: block; }
+  .pk-keys .pk-swipe { display: inline; }
+  .pk-keys .pk-kbd { display: none; }
+}
+.pk-moves {
+  display: flex; gap: 6px; margin: 12px -14px 0; padding: 2px 14px 4px; overflow-x: auto;
+  scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.pk-moves::-webkit-scrollbar { display: none; }
+.pk-move {
+  flex: none; scroll-snap-align: start; min-height: 44px; padding: 0 16px; border-radius: 999px;
+  font: 500 14px "IBM Plex Mono", monospace; color: var(--ink); background: var(--card);
+  border: 1.5px solid var(--ink); cursor: pointer; touch-action: manipulation;
+}
+.pk-move:hover { background: color-mix(in srgb, var(--ink) 10%, var(--card)); }
+.pk-move[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.pk-move:focus-visible, .pk-pv:focus-visible, .pk-more:focus-visible, .pk-all > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pk-previews { display: grid; gap: 6px; margin-top: 8px; }
+.pk-pv {
+  position: relative; display: block; width: 100%; min-height: 44px; text-align: left; cursor: pointer;
+  font: 15px/1.4 "Fraunces", Georgia, serif; color: var(--ink); background: var(--paper);
+  border: 1.5px solid var(--rule); border-radius: 10px; padding: 9px 12px 9px 36px; touch-action: manipulation;
+}
+.pk-pv:hover, .pk-pv.on { border-color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--paper)); }
+.pv-n {
+  position: absolute; left: 10px; top: 10px; width: 18px; height: 18px; border-radius: 50%;
+  font: 500 11px/18px "IBM Plex Mono", monospace; text-align: center; color: var(--ink); border: 1.5px solid var(--ink);
+}
+@media (hover: none) { .pv-n { display: none; } .pk-pv { padding-left: 12px; } }
+.pv-line .w, .pv-line .plain { font: inherit; }
+.pv-line .w.changed {
+  background: color-mix(in srgb, var(--accent) 22%, var(--paper)); color: var(--ink); font-weight: 600;
+  border-radius: 3px; padding: 0 .12em; box-shadow: inset 0 -2px 0 var(--accent);
+}
+.pv-line .ph.nested { background: none; border: 0; padding: 0; }
+.pv-cost { display: block; margin-top: 4px; font: 500 11px "IBM Plex Mono", monospace; letter-spacing: .04em; color: var(--ink-2); }
+.pv-cost.over { color: var(--accent-text); }
+.pk-more {
+  justify-self: start; min-height: 44px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+  font: 500 13px "IBM Plex Mono", monospace; color: var(--ink); background: transparent; border: 1.5px solid var(--ink);
+}
+.pk-more:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.pv-of { font-weight: 400; color: var(--ink-2); margin-left: 4px; }
+.pk-all { margin-top: 4px; }
+.pk-all > summary {
+  min-height: 44px; display: flex; align-items: center; gap: 4px; cursor: pointer; list-style: none;
+  font: 500 13px "IBM Plex Mono", monospace; color: var(--ink);
+}
+.pk-all > summary::-webkit-details-marker { display: none; }
+.pk-all > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s; }
+.pk-all[open] > summary::before { transform: rotate(90deg); }
+.picker.readonly .pk-moves, .picker.readonly .pk-previews, .picker.readonly .pk-all { display: none; }
+/* A previewed change shows in the piece itself before you use it. */
+.word.ghosted, .word.sel.ghosted, .beat.ghosted {
+  background: color-mix(in srgb, var(--accent) 16%, var(--card)); color: var(--ink); font-style: italic;
+  outline: 1.5px dashed var(--accent); outline-offset: 1px;
+}
+/* On a phone: a bottom sheet of at most ~55% of the screen; the page gets room to scroll the
+   selected line above it. */
+.picker.sheet { max-height: 55vh; max-height: 55dvh; overscroll-behavior: contain; padding-left: calc(14px + env(safe-area-inset-left)); padding-right: calc(14px + env(safe-area-inset-right)); }
+.picker.sheet .pk-moves { margin-left: calc(-14px - env(safe-area-inset-left)); margin-right: calc(-14px - env(safe-area-inset-right)); padding-left: calc(14px + env(safe-area-inset-left)); }
+body.sheet-open { padding-bottom: 55vh; }
+body.sheet-open .back-offer { bottom: calc(55vh + 12px); }
+.picker.sheet .pk-x { width: 44px; height: 44px; }
+.picker.sheet .pk-actions button, .picker.sheet .pk-own button, .picker.sheet .pk-own input { min-height: 44px; }
+.picker.sheet .pk-opt { min-height: 40px; }
+.picker.sheet .pk-list { max-height: none; border-bottom: 0; }
+@media (prefers-reduced-motion: reduce) { .pk-cur b.from-right, .pk-cur b.from-left { animation: none; } .pk-all > summary::before { transition: none; } }
+
 /* ---- word bank ---- */
 .bank-wrap { margin-top: 56px; }
 .bank-head { display: flex; align-items: baseline; gap: 12px; }

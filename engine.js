@@ -144,10 +144,15 @@ function options(schema, part, depth) {
 }
 
 // Set a word, growing or dropping its nested thing as needed, then drop anything it orphaned.
+// A word that swaps for another nesting the same card keeps the phrase inside ("thanks to a
+// goose" → "because of a goose").
 function setWord(schema, ph, k, val, depth) {
+  const was = k in ph.w ? nestKey(entryOf(schema, k, ph.w[k])) : null;
   ph.w[k] = val;
   const inner = nestKey(entryOf(schema, k, val));
-  if (inner) {
+  if (inner && inner === was && ph.sub?.[k]) {
+    // keep it
+  } else if (inner) {
     ph.sub = ph.sub || {};
     ph.sub[k] = randomPhrase(inner, depth + 1, undefined, !!(SCHEMAS[schema].noun && partOf(schema, k).trailing));
   } else if (ph.sub) delete ph.sub[k];
@@ -226,11 +231,15 @@ function tokens(schema, ph, who, slot, path = [], ghosts = false) {
       // A word that is only a nested card still gets a handle, so it can be tuned.
       out.push({ word: before.trim(), part: p, path: at });
       out.push({ group: tokens(inner, ph.sub[p.k], who, slot, at, ghosts), path: at, card: inner });
-      if (after.trim()) out.push({ text: after.trim() });
+      // A possessive ("{who}'s") sticks to the phrase before it.
+      if (after.trim()) out.push({ text: after.trim(), glue: /^['’]/.test(after) });
     } else out.push({ word: text, part: p, path: at });
   }
-  // Determiner: an article card takes a/an; a head word with a determiner brings its own.
-  let det = SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
+  // Determiner: an article card takes a/an; a head word with a determiner brings its own. A
+  // phrase that opens with a filled relation slot ("your uncle's dentist") already has one.
+  const parts = SCHEMAS[schema].parts;
+  const ledByRelation = parts.slice(0, parts.findIndex((p) => p.k === "n")).some((p) => p.relation && p.k in ph.w);
+  let det = ledByRelation ? "" : SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
   // "a"/"an" agree with the next word, also after a preposition ("under an old stair").
   if (/(^|\s)an?$/.test(det)) det = det.replace(/an?$/, /^[aeiou]/i.test(firstText(out)) ? "an" : "a");
   if (det) out.unshift({ text: det });
@@ -243,7 +252,9 @@ function firstText(toks) {
   }
   return "";
 }
-const flat = (toks) => toks.filter((t) => !t.ghost && t.word !== "").map((t) => (t.group ? flat(t.group) : t.word ?? t.text)).join(" ");
+// Tokens join with spaces, except a glued one, which sticks to what's before it.
+const joinToks = (toks, strs) => strs.map((s, i) => (i && !toks[i].glue ? " " : "") + s).join("");
+const flat = (toks) => { const ts = toks.filter((t) => !t.ghost && t.word !== ""); return joinToks(ts, ts.map((t) => (t.group ? flat(t.group) : t.word ?? t.text))); };
 
 // Cards are colored by position, so any grammar's cards get the palette in order.
 const cardClass = (key) => `k${Math.max(0, SLOTS.findIndex((c) => c.key === key)) % 6}`;
@@ -254,7 +265,7 @@ const phraseText = (slot) => flat(tokens(slot, state.pick[slot], person(), slot)
 
 function tokHtml(toks, slot, capFirst) {
   let first = capFirst;
-  return toks.map((t) => {
+  return joinToks(toks, toks.map((t) => {
     if (t.ghost) return `<button class="ghost-slot" data-add="${slot}" data-path="${t.path.join(".")}" title="Add a ${esc(t.ghost.name)}">+ ${esc(t.ghost.name)}</button>`;
     if (t.group) {
       const h = `<span class="ph nested" data-card="${esc(t.card || "")}">${tokHtml(t.group, slot, first)}</span>`;
@@ -269,9 +280,11 @@ function tokHtml(toks, slot, capFirst) {
     if (state.view) return `<span class="w${viewChanged(`${slot}|${p}`) ? " changed" : ""}">${esc(s)}</span>`;
     const pinned = state.pins.includes(`${slot}|${p}`);
     const sel = state.sel && state.sel.slot === slot && same(state.sel.path, t.path);
+    // A previewed change, shown in place before it's applied.
+    const ghost = state.ghost && inSet(state.ghost, `${slot}|${p}`);
     const card = SLOTS.find((c) => c.key === slot)?.label || slot;
-    return `<button class="word${pinned ? " pinned" : ""}${sel ? " sel" : ""}" data-slot="${slot}" data-path="${p}" aria-haspopup="dialog" aria-expanded="${sel}" aria-label="${esc(s)}, ${esc(card)}: ${esc(t.part.name)}${pinned ? ", pinned" : ""}">${esc(s)}</button>`;
-  }).join(" ");
+    return `<button class="word${pinned ? " pinned" : ""}${sel ? " sel" : ""}${ghost ? " ghosted" : ""}" data-slot="${slot}" data-path="${p}" aria-haspopup="dialog" aria-expanded="${sel}" aria-label="${esc(s)}, ${esc(card)}: ${esc(t.part.name)}${pinned ? ", pinned" : ""}">${esc(s)}</button>`;
+  }));
 }
 const phraseHtml = (slot, capFirst = false) =>
   `<span class="ph top ${cardClass(slot)}" data-card="${esc(slot)}">${tokHtml(tokens(slot, state.pick[slot], person(), slot, [], true), slot, capFirst)}</span>`;
@@ -368,7 +381,8 @@ function story(ctx) {
     // opens it; for keyboards and screen readers, a small button does (shown on focus).
     const said = fillText(line.t, ctx);
     const btn = `<button class="beat-btn" data-beat-btn="${key}" aria-haspopup="dialog" aria-expanded="${sel === key}" aria-label="Tune the sentence (${esc(beatGroup(key).name)}): ${esc(said.length > 90 ? said.slice(0, 88) + "…" : said)}${pinned ? ", pinned" : ""}">¶</button>`;
-    return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}">${btn}${fill(line.t, ctx)}</span>`;
+    const ghost = state.ghost && state.ghost.has(`beat|${key}`);
+    return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}${ghost ? " ghosted" : ""}" data-beat="${key}">${btn}${fill(line.t, ctx)}</span>`;
   }).join(form().lines ? "<br>" : " "));
 }
 
@@ -504,6 +518,232 @@ function pickerOptions(at) {
 function beatOptions(key, ctx) {
   return beatPool(key, ctx)
     .sort((a, b) => a.l.tier - b.l.tier || a.i - b.i);
+}
+
+// ---------- moves ----------
+// Lateral moves from a selected word, beyond plain → strange. Each move offers whole-phrase
+// changes to the word's card, nearest first: { move, ph (the card's whole phrase after the
+// change), changed (paths that differ), label ("Sideways: uncle → aunt") }. Everything comes
+// from the grammar: tiers, moods, tags on pool words (tags: ["family", …]), nesting words
+// ({thing}) and slots flagged relation: true. Constraints, depth and needs hold, as everywhere.
+const MOVES = [
+  { key: "sideways", name: "Sideways" },
+  { key: "zoom", name: "Zoom out" },
+  { key: "add", name: "Add" },
+  { key: "flip", name: "Flip" },
+  { key: "sound", name: "Sound" },
+];
+const MOVE_MAX = 30;
+const tagsOf = (e) => (Array.isArray(e.tags) ? e.tags : []);
+const sharedTags = (a, b) => tagsOf(a).filter((t) => tagsOf(b).includes(t)).length;
+// A slot that holds a bigger phrase around this one: flagged, or with words that nest a card.
+const zoomPart = (part) => !!part.relation || part.pool.some(nests);
+// A word as it reads, with a nested phrase spelled out.
+function wordText(schema, ph, k, who = person()) {
+  const t = pron(word(schema, ph, k).t, who);
+  const inner = subSchema(schema, ph, k);
+  return inner && ph.sub?.[k] ? t.replace(`{${inner}}`, flat(tokens(inner, ph.sub[k], who, inner))) : t;
+}
+// The first letter a value starts with, for alliteration ("" for a word that opens on a card).
+function letterOf(schema, k, v) {
+  const t = pron(entryOf(schema, k, v).t, person()).trim();
+  return /^[a-z]/i.test(t) ? t.charAt(0).toLowerCase() : "";
+}
+// Start a value list just after the current word, wrapping, so "more" keeps walking the pool.
+function fromCur(vals, cur) {
+  const i = vals.findIndex((v) => same(v, cur));
+  return i < 0 ? vals : [...vals.slice(i + 1), ...vals.slice(0, i)];
+}
+// Values for a slot at a depth, minus the current one.
+const othersFor = (at, part, cur) => fromCur(options(at.schema, part, at.depth), cur).filter((v) => !same(v, cur));
+
+// The candidate whole phrases for one move from the word at slot/path.
+function moveCandidates(slot, path, move) {
+  const top = state.pick[slot];
+  const at = top && locate(slot, top, path);
+  if (!at || !(at.k in at.ph.w)) return [];
+  const part = partOf(at.schema, at.k);
+  const cur = at.ph.w[at.k];
+  const entry = entryOf(at.schema, at.k, cur);
+  const parts = SCHEMAS[at.schema].parts;
+  const base = path.slice(0, -1);
+  // Each change: [slot key in this phrase, value] (or a function that edits the phrase copy).
+  const edits = [];
+  const set = (k, v) => edits.push((ph, schema, depth) => setWord(schema, ph, k, v, depth));
+  let keep = () => true;
+
+  if (move === "plainer" || move === "stranger") {
+    const vals = pickerOptions(at);
+    const i = vals.findIndex((v) => same(v, cur));
+    for (const v of move === "plainer" ? vals.slice(0, i).reverse() : vals.slice(i + 1)) set(at.k, v);
+  } else if (move === "sideways") {
+    // Same slot, same register; words sharing a tag first, then (for a slot with mood) the same mood.
+    const score = (v) => { const e = entryOf(at.schema, at.k, v); return sharedTags(e, entry) * 2 + (part.mood && e.v === entry.v ? 1 : 0); };
+    const vals = othersFor(at, part, cur).filter((v) => entryOf(at.schema, at.k, v).tier === entry.tier);
+    vals.map((v, i) => ({ v, i, s: score(v) })).sort((a, b) => b.s - a.s || a.i - b.i).forEach((x) => set(at.k, x.v));
+  } else if (move === "zoom") {
+    // Put this phrase inside a bigger one: fill (or change) an optional slot that nests a card.
+    // A relation slot that nests this same card ({who}'s) takes this phrase, and the head moves
+    // on: "your uncle" → "your uncle's dentist".
+    const rounds = [];
+    for (const p of parts) {
+      if (!p.opt || p.k === at.k || !zoomPart(p) || !allowed(at.schema, at.ph, p)) continue;
+      const vals = othersFor(at, p, at.ph.w[p.k]).filter((v) => p.relation || nests(entryOf(at.schema, p.k, v)));
+      const list = [];
+      for (const v of vals) {
+        const inner = nestKey(entryOf(at.schema, p.k, v));
+        if (inner === at.schema && !(p.k in at.ph.w)) {
+          // This phrase goes inside; a new head word (or a few) stands outside it.
+          const heads = othersFor(at, partOf(at.schema, "n"), at.ph.w.n).slice(0, 6);
+          for (const h of heads) list.push((ph, schema, depth) => {
+            const inside = clone(ph);
+            setWord(schema, ph, p.k, v, depth);
+            // Inside a noun card's trailing clause, a phrase takes no clause of its own.
+            if (SCHEMAS[schema].noun && p.trailing) { inside.x = 1; tidy(schema, inside); } else delete inside.x;
+            ph.sub[p.k] = inside;
+            for (const q of parts) if (q.k !== "n" && q.k !== p.k) dropWord(schema, ph, q.k);
+            setWord(schema, ph, "n", h, depth);
+          });
+        } else {
+          // A couple of different phrases inside each word, so "more" has somewhere to go.
+          for (let n = 0; n < (vals.length < 5 ? 3 : 1); n++) list.push((ph, schema, depth) => {
+            if (ph.sub) delete ph.sub[p.k];
+            delete ph.w[p.k];
+            setWord(schema, ph, p.k, v, depth);
+          });
+        }
+      }
+      rounds.push(list);
+    }
+    edits.push(...interleave(rounds));
+  } else if (move === "add") {
+    // Fill an empty optional slot that doesn't nest: "your uncle" → "your ugly uncle".
+    const rounds = [];
+    for (const p of parts) {
+      if (!p.opt || p.k in at.ph.w || p.relation || !allowed(at.schema, at.ph, p)) continue;
+      const vals = options(at.schema, p, at.depth).filter((v) => !nests(entryOf(at.schema, p.k, v)));
+      // Words near the current register first.
+      rounds.push(vals.map((v, i) => ({ v, i, d: Math.abs(entryOf(at.schema, p.k, v).tier - entry.tier) }))
+        .sort((a, b) => a.d - b.d || a.i - b.i).map((x) => (ph, schema, depth) => setWord(schema, ph, p.k, x.v, depth)));
+    }
+    edits.push(...interleave(rounds));
+  } else if (move === "flip") {
+    // The opposite mood at a similar register, on the phrase's mood word (its head).
+    const k = part.mood ? at.k : partOf(at.schema, "n").mood ? "n" : null;
+    if (k) {
+      const now = at.ph.w[k];
+      const e = entryOf(at.schema, k, now);
+      const want = e.v === 0 ? [1, -1] : [-e.v];
+      othersFor(at, partOf(at.schema, k), now)
+        .map((v, i) => ({ v, i, e: entryOf(at.schema, k, v) }))
+        .filter((x) => want.includes(x.e.v))
+        .sort((a, b) => Math.abs(a.e.tier - e.tier) - Math.abs(b.e.tier - e.tier) || a.i - b.i)
+        .forEach((x) => set(k, x.v));
+    }
+  } else if (move === "sound") {
+    // Alliteration: this word, swapped for one starting like a word or phrase next to it; or a
+    // neighbor in this phrase, swapped (or added) to start like this word.
+    const toks = tokens(at.schema, at.ph, person(), at.schema).filter((t) => t.word !== undefined && t.word !== "");
+    const ti = toks.findIndex((t) => t.path[0] === at.k);
+    const near = new Set();
+    for (const t of [toks[ti - 1], toks[ti + 1]]) if (t) near.add(t.word.trim().charAt(0).toLowerCase());
+    for (const c of SLOTS) if (c.key !== slot && stanza().slots.includes(c.key) && state.pick[c.key]) near.add(phraseSound(c.key, state.pick[c.key]));
+    const mine = letterOf(at.schema, at.k, cur);
+    const swaps = othersFor(at, part, cur)
+      .map((v, i) => ({ v, i, l: letterOf(at.schema, at.k, v), e: entryOf(at.schema, at.k, v) }))
+      .filter((x) => x.l && x.l !== mine && near.has(x.l))
+      .sort((a, b) => Math.abs(a.e.tier - entry.tier) - Math.abs(b.e.tier - entry.tier) || a.i - b.i)
+      .map((x) => (ph, schema, depth) => setWord(schema, ph, at.k, x.v, depth));
+    const echoes = [];
+    if (mine) for (const p of parts) {
+      if (p.k === at.k || p.relation || !allowed(at.schema, at.ph, p) || state.pins.includes(`${slot}|${[...base, p.k].join(".")}`)) continue;
+      if (!(p.k in at.ph.w) && !p.opt) continue;
+      if (p.k in at.ph.w && letterOf(at.schema, p.k, at.ph.w[p.k]) === mine) continue;
+      echoes.push(othersFor(at, p, at.ph.w[p.k]).filter((v) => !nests(entryOf(at.schema, p.k, v)) && letterOf(at.schema, p.k, v) === mine)
+        .map((v) => (ph, schema, depth) => setWord(schema, ph, p.k, v, depth)));
+    }
+    edits.push(...interleave([swaps, ...echoes]));
+    // A swap can drop the very word it matched (an intensity the new feeling won't take).
+    keep = (ph, l) => {
+      if (!(at.k in l.ph.w)) return false;
+      const head = letterOf(l.schema, at.k, l.ph.w[at.k]);
+      const ls = tokens(l.schema, l.ph, person(), l.schema).filter((t) => t.word).map((t) => t.word.trim().charAt(0).toLowerCase());
+      return ls.filter((x) => x === head).length > 1 || SLOTS.some((c) => c.key !== slot && stanza().slots.includes(c.key) && state.pick[c.key] && phraseSound(c.key, state.pick[c.key]) === head);
+    };
+  }
+
+  const out = [], seen = new Set([JSON.stringify(top)]);
+  const name = move === "plainer" ? "Plainer" : move === "stranger" ? "Stranger" : MOVES.find((m) => m.key === move)?.name || move;
+  for (const edit of edits) {
+    if (out.length >= MOVE_MAX) break;
+    const ph = clone(top);
+    const here = locate(slot, ph, path);
+    edit(here.ph, here.schema, here.depth);
+    tidy(here.schema, here.ph);
+    const key = JSON.stringify(ph);
+    if (seen.has(key) || !validPhrase(slot, ph, 0) || !keep(ph, here)) continue;
+    seen.add(key);
+    const changed = diffPhrase(slot, top, ph);
+    if (!changed.length) continue;
+    out.push({ move, ph, changed, label: `${name}: ${moveLabel(slot, top, ph, path, changed, move !== "zoom")}` });
+  }
+  return out;
+}
+// Take one from each list in turn, so a few previews show different kinds of change.
+function interleave(lists) {
+  const out = [];
+  for (let i = 0; lists.some((l) => i < l.length); i++) for (const l of lists) if (i < l.length) out.push(l[i]);
+  return out;
+}
+// "uncle → aunt" when one word changed; the whole phrase around the word otherwise.
+function moveLabel(slot, a, b, path, changed, byWord = true) {
+  const who = person();
+  const k = path[path.length - 1];
+  const pa = locate(slot, a, path), pb = locate(slot, b, path);
+  // The word itself changed (anything else that went with it is in the preview).
+  if (byWord && changed.includes(path.join(".")) && pa && pb && k in pa.ph.w && k in pb.ph.w) return `${wordText(pa.schema, pa.ph, k, who)} → ${wordText(pb.schema, pb.ph, k, who)}`;
+  if (changed.length === 1 && pa && pb) {
+    const ck = changed[0].split(".");
+    const qa = locate(slot, a, ck), qb = locate(slot, b, ck);
+    const k2 = ck[ck.length - 1];
+    if (qa && qb && k2 in qa.ph.w && k2 in qb.ph.w) return `${wordText(qa.schema, qa.ph, k2, who)} → ${wordText(qb.schema, qb.ph, k2, who)}`;
+  }
+  const text = (ph) => { const l = locate(slot, ph, path); return l ? flat(tokens(l.schema, l.ph, who, l.schema)) : ""; };
+  return `${text(a)} → ${text(b)}`;
+}
+// Every move with candidates, in order (moves with none are left out), plus the steps.
+function movesFor(slot, path) {
+  const out = {};
+  for (const m of ["plainer", "stranger", ...MOVES.map((x) => x.key)]) {
+    const c = moveCandidates(slot, path, m);
+    if (c.length) out[m] = c;
+  }
+  return out;
+}
+// One line of the piece with a card swapped for a candidate phrase, the change marked: the
+// headline, or a beat line (beat = its key). html: false gives plain text.
+function previewLine(slot, ph, changed, beat, html = true) {
+  const saved = { pick: state.pick, sel: state.sel, view: state.view };
+  state.pick = { ...state.pick, [slot]: ph };
+  state.sel = null;
+  state.view = new Set(changed.map((p) => `${slot}|${p}`));
+  try {
+    const ctx = context();
+    if (beat && beatGroup(beat)) {
+      const line = beatLines(beat, ctx)[beatChoices(ctx)[beat]];
+      return html ? fill(line.t, ctx) : fillText(line.t, ctx);
+    }
+    return html ? bitHtml(ctx) : bitLine(ctx);
+  } finally {
+    Object.assign(state, saved);
+  }
+}
+// Beat lines at the same register as the current one: a beat's sideways move.
+function beatSideways(key, ctx = context()) {
+  const cur = beatChoices(ctx)[key];
+  const opts = beatOptions(key, ctx);
+  const tier = beatLines(key, ctx)[cur]?.tier;
+  return fromCur(opts.map((x) => x.i), cur).filter((i) => i !== cur && beatLines(key, ctx)[i].tier === tier);
 }
 
 // ---------- links ----------
@@ -719,10 +959,12 @@ function staticHtml(snap, changed) {
     state.view = null;
   }
 }
-const viewChanged = (key) => {
-  for (const c of state.view) if (key === c || key.startsWith(c + ".")) return true;
+// Is this word (or beat) one of the keys, or inside one? "what|t" covers "what|t.n".
+const inSet = (set, key) => {
+  for (const c of set) if (key === c || key.startsWith(c + ".")) return true;
   return false;
 };
+const viewChanged = (key) => inSet(state.view, key);
 
 // Today's bit: the same Story Bits piece for everyone today (UTC), as a 3-move challenge.
 // Generated from the date alone: no word bank, forms rotate by day.

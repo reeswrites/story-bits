@@ -19,7 +19,7 @@ A grammar is one shareable, forkable JSON document:
 | part | what it is |
 |---|---|
 | `cards` | the pieces of a piece (story: who, what happened, how they feel, where, thing) |
-| `schemas` | each card's ordered word slots (`[intensity] [quality] noun [clause]`) and their word pools; slot flags: `opt`, `needs`, `mood`, `det`, `pronouns`, `trailing` |
+| `schemas` | each card's ordered word slots (`[intensity] [quality] noun [clause]`) and their word pools; slot flags: `opt`, `needs`, `mood`, `det`, `pronouns`, `trailing`, `relation`; pool words may carry `tags` |
 | `line` | the headline: a template over cards and pronouns (`{who} {what}, and {p} {is} {feel}.`) |
 | `forms` | shapes of a telling: stanzas that bring in cards and fill paragraphs with beats; beat lines are tiered plain → strange |
 | `rules` | what the dial means: which card pairs can clash and on what (`mood`, `register`, `sound`), whether every form must land, and word constraints |
@@ -47,6 +47,20 @@ grammar can't produce a word that breaks it.
 
 **Nesting** is any word whose text names a card (`blames {thing}`): that word holds a whole phrase
 of that card, tunable the same way, to `maxDepth`.
+
+**Moves** are the picker's lateral changes, generated from grammar data alone (`moveCandidates` in
+engine.js). Each returns whole-phrase candidates, nearest first:
+
+| move | from the grammar |
+|---|---|
+| plainer / stranger | the slot's words ordered by tier (‹ ›) |
+| sideways | same slot and tier; words sharing a `tags` entry first (`tags: ["family"]`), then the same mood; with no tags, just the same tier |
+| zoom out | an empty (or other) optional slot that nests a card: flagged `relation: true`, or found by its nesting words. A relation slot that nests its own card (`{who}'s`) takes the current phrase inside and offers new heads: *your uncle* → *your uncle's dentist*. A phrase led by a filled relation slot takes no determiner of its own, and a nested phrase's trailing `'s` sticks to it |
+| add | an empty optional slot that doesn't nest |
+| flip | the opposite mood (`v`) at the nearest tier, on the phrase's mood word |
+| sound | the same first letter as a neighboring word or card, or another word in the phrase matched to this one |
+
+Every candidate passes constraints, `needs` and `maxDepth`, like any other word.
 
 ### Decision: one kept shelf, declared by the grammar (2026-10-15)
 
