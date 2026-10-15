@@ -782,16 +782,16 @@ details[open] > summary .caret { transform: rotate(90deg); }
 }
 .word.sel { text-decoration-color: var(--paper); }
 /* Part labels under the headline's phrases: shown on a first visit, then by choice. */
+/* Labels sit inline at the start of each card's phrase, in the text flow, so a wrapping phrase
+   can never put one on top of another line's words. Only top-level cards are labeled. */
 .part-label {
-  position: absolute; transform: translateY(calc(var(--fs, 30px) * 1.22 + 15px)); margin-left: -.12em; pointer-events: none;
-  font: 500 9.5px/1.4 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
-  color: var(--ink-2); background: var(--card); border-radius: 3px; padding: 0 4px;
-  opacity: 0; transition: opacity .6s ease; font-style: normal; font-weight: 500;
+  display: none; position: static; vertical-align: .3em; margin: 0 .35em 0 0; pointer-events: none;
+  font: 500 10px/1.5 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ink-2); background: var(--card); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px;
+  font-style: normal; font-weight: 500;
   user-select: none; -webkit-user-select: none;
 }
-.ph.nested > .part-label { text-transform: none; letter-spacing: .02em; }
-body.show-parts #bit { line-height: 1.95; }
-body.show-parts #bit .part-label { opacity: 1; }
+body.show-parts #bit .ph:not(.nested) > .part-label { display: inline-block; }
 #bit .ph { position: static; }
 .bit { transition: line-height .4s ease; }
 .parts-toggle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 14px; font: 500 14px "IBM Plex Mono", monospace; cursor: pointer; }

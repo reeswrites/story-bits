@@ -234,7 +234,16 @@ function randomPhrase(schema, depth = 0, shape = randomShape(schema, depth), x =
   const order = [...parts.filter((p) => !p.opt), ...parts.filter((p) => p.opt && !p.needs), ...parts.filter((p) => p.needs)];
   for (const p of order) {
     if ((p.opt && !shape[p.k]) || !allowed(schema, ph, p)) continue;
-    const ok = options(schema, p, depth);
+    let ok = options(schema, p, depth);
+    // Chance stays shallow: a phrase that is already nested doesn't nest again on its own (no
+    // "a dog from a wind chime that was found in a lawn flamingo"). People's relations are the
+    // exception: "your sister's ex's landlord" reads cleanly. Deeper chains of any kind are
+    // still valid, and you can build one on purpose with Zoom out.
+    if (depth >= 1 && !p.relation) {
+      const flat = ok.filter((v) => !nests(entryOf(schema, p.k, v)));
+      if (flat.length) ok = flat;
+      else if (p.opt) continue;
+    }
     if (ok.length) setWord(schema, ph, p.k, ok[rand(ok.length)], depth);
   }
   return ph;
