@@ -164,9 +164,17 @@ function checkForm(f, g) {
 // For grammars from the library, a link, a pack or a jam. Returns "" or the first problem.
 const GRAMMAR_MAX = 200 * 1024;
 const PAIR_ON = ["mood", "register", "sound"];
+// No markup anywhere in a grammar: every string in it ends up on the page.
+function hasMarkup(x) {
+  if (typeof x === "string") return /[<>]/.test(x);
+  if (Array.isArray(x)) return x.some(hasMarkup);
+  if (x && typeof x === "object") return Object.entries(x).some(([k, v]) => /[<>]/.test(k) || hasMarkup(v));
+  return false;
+}
 function checkGrammar(g) {
   if (!g || typeof g !== "object") return "not a grammar";
   try { if (JSON.stringify(g).length > GRAMMAR_MAX) return "too big (200 KB max)"; } catch { return "not JSON"; }
+  if (hasMarkup(g)) return "no angle brackets anywhere: a grammar is text, not markup";
   if (typeof g.id !== "string" || !/^[a-z][a-z0-9-]{1,39}$/.test(g.id)) return "id must be a short lowercase slug";
   if (typeof g.name !== "string" || !cleanWord(g.name) || g.name.length > 40) return "needs a name up to 40 characters";
   if (g.description !== undefined && (typeof g.description !== "string" || g.description.length > 400)) return "description is up to 400 characters";

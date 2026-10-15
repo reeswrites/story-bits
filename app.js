@@ -326,7 +326,9 @@ function fillWith(tpl, ctx, card) {
     return "";
   });
 }
-const fill = (tpl, ctx) => fillWith(tpl, ctx, (k, c) => phraseHtml(k, c));
+// The HTML version escapes the template's own text and the pronouns; cards come from phraseHtml,
+// which escapes every word. Grammars can come from links and spaces, so nothing is trusted.
+const fill = (tpl, ctx) => fillWith(esc(tpl), { ...ctx, pr: Object.fromEntries(Object.entries(ctx.pr).map(([k, v]) => [k, typeof v === "string" ? esc(v) : v])) }, (k, c) => phraseHtml(k, c));
 const fillText = (tpl, ctx) => fillWith(tpl, ctx, (k, c) => (c ? cap(ctx.text[k] || "") : ctx.text[k] || ""));
 
 // The headline: the grammar's line ("{who} {what}, and {p} {is} {feel}.").
@@ -1127,7 +1129,7 @@ function render() {
 
   const inPlay = stanza().slots;
   $("#legend").innerHTML = SLOTS.filter((s) => inPlay.includes(s.key)).map((s) =>
-    `<button class="chip ${cardClass(s.key)}" data-roll="${s.key}" title="Reroll ${s.hint}, keeping pinned words">${s.label} <span aria-hidden="true">↻</span></button>`).join("");
+    `<button class="chip ${cardClass(s.key)}" data-roll="${s.key}" title="Reroll ${esc(s.hint || s.label)}, keeping pinned words">${esc(s.label)} <span aria-hidden="true">↻</span></button>`).join("");
 
   renderGameBar();
   document.body.classList.toggle("verse", !!form().lines);
@@ -1152,7 +1154,7 @@ function render() {
 
   $("#pairs").innerHTML = pairsInPlay().map((p) => {
     const c = clashes(p);
-    return `<li class="${c ? "clash" : "fit"}"><span class="pair-label">${p.label}</span><span class="pair-state">${c ? "clashes" : "fits"}</span></li>`;
+    return `<li class="${c ? "clash" : "fit"}"><span class="pair-label">${esc(p.label || `${p.a} ↔ ${p.b}`)}</span><span class="pair-state">${c ? "clashes" : "fits"}</span></li>`;
   }).join("");
 
   renderPicker();
