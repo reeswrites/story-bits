@@ -416,3 +416,40 @@ body.in-game .grammar-row { display: none; }
 /* Poem forms: each beat on its own line, stanzas spaced, a quieter headline. */
 body.verse .story p { margin: 0 0 22px; line-height: 2; }
 body.verse .bit { font-weight: 500; font-style: italic; }
+
+/* ---- grammar library ---- */
+.library-wrap { margin-top: 56px; }
+.lib-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; margin-top: 16px; }
+.gram { background: var(--card); box-shadow: var(--shadow); border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+.gram.active { outline: 2px solid var(--ink); }
+.gram header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.gram h3 { margin: 0; font-size: 20px; }
+.gram-desc { margin: 0; font-size: 14px; color: var(--ink-2); }
+.gram-tags { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.gram-tags span { font: 11px "IBM Plex Mono", monospace; border: 1px dashed var(--rule); border-radius: 999px; padding: 2px 8px; }
+.gram-meta { margin: 0; font: 12px "IBM Plex Mono", monospace; color: var(--ink-2); }
+.gram .person-actions { margin-top: auto; padding-top: 6px; }
+.lib-incoming { margin-top: 14px; padding: 14px 16px; border-radius: 10px; border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.lib-incoming p { margin: 0 0 6px; }
+.lib-editor { margin-top: 18px; background: var(--card); box-shadow: var(--shadow); border-radius: 10px; padding: 16px 18px; }
+.lib-head { display: flex; justify-content: space-between; align-items: center; }
+.lib-head h3 { margin: 0; font-size: 20px; }
+.lib-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 10px 0 14px; border-bottom: 1px solid var(--rule); }
+.lib-tabs button { font: 500 13px "IBM Plex Mono", monospace; border: 0; background: none; color: var(--ink-2); padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.lib-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.lib-body { display: flex; flex-direction: column; gap: 12px; }
+.lib-body input, .lib-body textarea, .lib-body select { font: inherit; font-size: 15px; color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; padding: 7px 10px; min-height: 38px; }
+.lib-body textarea#lib-json { font: 12px/1.5 "IBM Plex Mono", monospace; width: 100%; }
+.lib-body code { font: 12px "IBM Plex Mono", monospace; background: var(--paper); padding: 1px 4px; border-radius: 3px; }
+.lib-words { display: flex; flex-wrap: wrap; }
+.lib-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lib-add input[name="t"] { flex: 1 1 220px; }
+.lib-add button, .lib-body .cp-row button { font: 500 14px "IBM Plex Mono", monospace; padding: 8px 14px; border-radius: 6px; border: 1.5px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; min-height: 38px; }
+.lib-add button.primary, .lib-body .cp-row button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.lib-lines { margin: 0; padding-left: 22px; font-size: 15px; }
+.lib-lines li { margin-bottom: 6px; }
+.lib-cons { display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
+.lib-cons input[type="checkbox"], .lib-check input { width: 18px; height: 18px; vertical-align: -3px; min-height: 0; }
+.lib-cons input:not([type="checkbox"]) { min-height: 30px; padding: 3px 6px; width: auto; }
+.lib-check { font-size: 15px; }
+.bank-word.filtered { opacity: .6; text-decoration: line-through; }

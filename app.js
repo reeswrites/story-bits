@@ -162,7 +162,7 @@ function allowed(schema, ph, part) {
 // Every value a slot can take at this depth: the grammar's words that pass its constraints,
 // then your bank's words for this grammar (unless the grammar is closed).
 function options(schema, part, depth) {
-  const out = part.pool.map((_, i) => i).filter((i) => (depth < MAX_DEPTH || !nests(part.pool[i])) && wordAllowed(part.pool[i].t, G));
+  const out = part.pool.map((_, i) => i).filter((i) => (depth < MAX_DEPTH || !nests(part.pool[i])) && entryAllowed(part.pool[i], G));
   if (!state.shared && !grammarClosed(G)) for (const e of bank) if (gOf(e) === G.id && e.s === schema && e.k === part.k && !checkEntry(e, G)) out.push(asValue(e));
   // A constraint that rules out every word in a required slot: fall back to the whole pool.
   if (!out.length && !part.opt) return part.pool.map((_, i) => i).filter((i) => depth < MAX_DEPTH || !nests(part.pool[i]));
@@ -342,6 +342,12 @@ function beatLines(key, ctx) {
 }
 // A line can be used once the cards it names are in play.
 const lineFits = (line) => lineCards(line.t, G).every((k) => stanza().slots.includes(k));
+// Beat lines that also pass a lipogram, if any do; otherwise every fitting line (never an empty beat).
+function beatPool(key, ctx) {
+  const all = beatLines(key, ctx).map((l, i) => ({ l, i })).filter((x) => lineFits(x.l));
+  const clean = all.filter((x) => lipogramOk(x.l.t, G));
+  return clean.length ? clean : all;
+}
 const clashCount = () => pairsInPlay().filter((p) => clashes(p)).length;
 const beatKeys = () => Object.keys(form().beats);
 
@@ -360,7 +366,7 @@ function beatChoices(ctx) {
     if (Number.isInteger(tuned) && lines[tuned] && lineFits(lines[tuned])) { out[key] = tuned; continue; }
     const g = beatGroup(key);
     const want = g.byClash ? Math.min(2, clashCount()) : null;
-    let ok = lines.map((l, i) => ({ l, i })).filter((x) => lineFits(x.l));
+    let ok = beatPool(key, ctx);
     const byTier = ok.filter((x) => (want === null ? x.l.tier <= state.dial : x.l.tier === want));
     if (byTier.length) ok = byTier;
     out[key] = ok[Math.floor(r * ok.length)].i;
@@ -548,7 +554,7 @@ function crumbs(slot, path) {
 let pickerVals = [];
 // The lines a beat can take right now, plain to strange.
 function beatOptions(key, ctx) {
-  return beatLines(key, ctx).map((l, i) => ({ l, i })).filter((x) => lineFits(x.l))
+  return beatPool(key, ctx)
     .sort((a, b) => a.l.tier - b.l.tier || a.i - b.i);
 }
 function renderBeatPicker(el, key) {
@@ -1276,6 +1282,7 @@ function switchGrammar(id) {
   renderBank();
   renderCast();
   render();
+  renderLibrary();
 }
 const allGrammars = () => [...Object.values(GRAMMARS), ...Object.values(library)];
 
@@ -1610,6 +1617,7 @@ addEventListener("resize", () => state.sel && positionPicker());
   const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };
   let ready = false;
   if (kind === "pack") importPack(data);
+  else if (kind === "grammar") receiveGrammar(data);
   else if (kind === "room" && ROOM_CODE.test(data)) {
     // Start with a fresh story under the room; the room takes over once connected.
     for (const sl of SLOTS) state.pick[sl.key] = randomPhrase(sl.key);
@@ -1636,4 +1644,6 @@ addEventListener("resize", () => state.sel && positionPicker());
   renderBank();
   render();
   renderCast();
+  renderLibrary();
+  if (lib.incoming) $("#library").scrollIntoView({ behavior: "smooth", block: "start" });
 })();

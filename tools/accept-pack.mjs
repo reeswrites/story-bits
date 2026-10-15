@@ -17,58 +17,82 @@ if (!/^\d+$/.test(NUMBER)) fail("NUMBER must be the issue number.");
 const ctx = vm.createContext({});
 vm.runInContext(
   `${fs.readFileSync("data.js", "utf8")}\n${fs.readFileSync("grammar.js", "utf8")}\n` +
-    "this.SCHEMAS = SCHEMAS; this.FORMS = FORMS; this.checkEntry = checkEntry; this.checkForm = checkForm; this.cleanWord = cleanWord;",
+    "this.GRAMMARS = GRAMMARS; this.checkEntry = checkEntry; this.checkForm = checkForm; this.checkGrammar = checkGrammar; this.cleanWord = cleanWord;",
   ctx,
 );
-const { SCHEMAS, FORMS, checkEntry, checkForm, cleanWord } = ctx;
+const { GRAMMARS, checkEntry, checkForm, checkGrammar, cleanWord } = ctx;
 
 const block = BODY.match(/```json\s*([\s\S]*?)```/);
 if (!block) fail("No ```json block found in the issue.");
 let pack;
 try { pack = JSON.parse(block[1]); } catch (e) { fail(`The json block doesn't parse: ${e.message}`); }
+const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
 const words = Array.isArray(pack?.words) ? pack.words : [];
-const forms = pack?.forms && typeof pack.forms === "object" && !Array.isArray(pack.forms) ? pack.forms : {};
-if (!words.length && !Object.keys(forms).length) fail("The pack has no words or forms.");
+const forms = obj(pack?.forms);
+const grammars = obj(pack?.grammars);
+if (!words.length && !Object.keys(forms).length && !Object.keys(grammars).length) fail("The pack has no words, forms or grammars.");
 
-// Everything already shared: the built-in pools plus earlier packs.
+// Everything already shared: the built-in grammars plus earlier packs (in index order, the order
+// the site loads them).
 const indexPath = "packs/index.json";
 const index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
 const known = new Set();
-const keyOf = (e) => `${e.s}.${e.k}.${e.t.toLowerCase()}`;
-for (const [s, schema] of Object.entries(SCHEMAS)) for (const p of schema.parts) for (const w of p.pool) known.add(`${s}.${p.k}.${w.t.toLowerCase()}`);
-const knownForms = new Set(Object.keys(FORMS));
+const keyOf = (e) => `${e.g || "story-bits"}.${e.s}.${e.k}.${e.t.toLowerCase()}`;
+const addPools = (g) => { for (const [s, schema] of Object.entries(g.schemas)) for (const p of schema.parts) for (const w of p.pool) known.add(`${g.id}.${s}.${p.k}.${w.t.toLowerCase()}`); };
+for (const g of Object.values(GRAMMARS)) addPools(g);
 for (const f of index) {
   const p = JSON.parse(fs.readFileSync(`packs/${f}`, "utf8"));
+  for (const [id, g] of Object.entries(p.grammars || {})) if (!GRAMMARS[id] && !checkGrammar(g)) { GRAMMARS[id] = g; addPools(g); }
   for (const e of p.words || []) known.add(keyOf(e));
-  for (const k of Object.keys(p.forms || {})) knownForms.add(k);
+  const fg = GRAMMARS[p.grammar || "story-bits"];
+  if (fg) for (const k of Object.keys(p.forms || {})) fg.forms[k] = fg.forms[k] || p.forms[k];
 }
 
-const accepted = [], rejected = [];
+const rejected = [];
+// Grammars: checked whole; an id is never reused, so links to a grammar keep their meaning.
+const acceptedGrammars = {};
+for (const [id, g] of Object.entries(grammars)) {
+  const err = GRAMMARS[id] ? "that grammar id is taken" : g?.id !== id ? "its id doesn't match its key" : checkGrammar(g);
+  if (err) rejected.push(`- grammar \`${cleanWord(id)}\`: ${err}`);
+  else { const { shared, ...clean } = g; acceptedGrammars[id] = clean; GRAMMARS[id] = clean; addPools(clean); }
+}
+
+const accepted = [];
 for (const raw of words) {
   // Keep only the fields a word may have, in a stable order.
   const e = raw && typeof raw === "object"
-    ? Object.fromEntries(["s", "k", "t", "tier", "v", "det", "pr"].filter((f) => raw[f] !== undefined).map((f) => [f, raw[f]]))
+    ? Object.fromEntries(["g", "s", "k", "t", "tier", "v", "det", "pr"].filter((f) => raw[f] !== undefined).map((f) => [f, raw[f]]))
     : raw;
-  const err = checkEntry(e) || (known.has(keyOf(e)) ? "already in the shared bank" : "");
+  const g = GRAMMARS[e?.g || "story-bits"];
+  const err = !g ? "belongs to a grammar nobody has" : checkEntry(e, g) || (known.has(keyOf(e)) ? "already in the shared bank" : "");
   if (err) rejected.push(`- \`${cleanWord(raw?.t) || "?"}\`: ${err}`);
   else { accepted.push(e); known.add(keyOf(e)); }
 }
-// Forms: checked whole (every stanza must land), keyed by a short slug that's never reused.
+
+// Forms join one grammar (pack.grammar, default Story Bits), checked whole; a key is never reused.
+const formGrammar = GRAMMARS[pack.grammar || "story-bits"];
 const acceptedForms = {};
 for (const [k, f] of Object.entries(forms)) {
-  const err = !/^[a-z][a-z0-9-]{0,23}$/.test(k) ? "key must be a short lowercase slug" : knownForms.has(k) ? "that form key is taken" : checkForm(f);
+  const err = !formGrammar ? "the pack's grammar doesn't exist" : !/^[a-z][a-z0-9-]{0,23}$/.test(k) ? "key must be a short lowercase slug" : formGrammar.forms[k] ? "that form key is taken" : checkForm(f, formGrammar);
   if (err) rejected.push(`- form \`${cleanWord(k)}\`: ${err}`);
-  else { acceptedForms[k] = f; knownForms.add(k); }
+  else { acceptedForms[k] = f; formGrammar.forms[k] = f; }
 }
 const nForms = Object.keys(acceptedForms).length;
-if (!accepted.length && !nForms) fail(`Nothing new and valid.\n${rejected.join("\n")}`);
+const nGrammars = Object.keys(acceptedGrammars).length;
+if (!accepted.length && !nForms && !nGrammars) fail(`Nothing new and valid.\n${rejected.join("\n")}`);
 
 const file = `issue-${NUMBER}.json`;
 const name = cleanWord(pack.name).slice(0, 60) || `Pack from #${NUMBER}`;
-fs.writeFileSync(`packs/${file}`, JSON.stringify({ name, source: `#${NUMBER}`, words: accepted, ...(nForms && { forms: acceptedForms }) }, null, 1) + "\n");
+fs.writeFileSync(`packs/${file}`, JSON.stringify({
+  name, source: `#${NUMBER}`,
+  ...(nGrammars && { grammars: acceptedGrammars }),
+  ...(pack.grammar && nForms && { grammar: pack.grammar }),
+  words: accepted,
+  ...(nForms && { forms: acceptedForms }),
+}, null, 1) + "\n");
 if (!index.includes(file)) fs.writeFileSync(indexPath, JSON.stringify([...index, file], null, 1) + "\n");
 
-summary(`Accepted ${accepted.length} word${accepted.length === 1 ? "" : "s"}${nForms ? ` and ${nForms} form${nForms === 1 ? "" : "s"}` : ""} into \`packs/${file}\`.` +
+summary(`Accepted ${[nGrammars && `${nGrammars} grammar${nGrammars === 1 ? "" : "s"}`, `${accepted.length} word${accepted.length === 1 ? "" : "s"}`, nForms && `${nForms} form${nForms === 1 ? "" : "s"}`].filter(Boolean).join(", ")} into \`packs/${file}\`.` +
   (rejected.length ? `\n\nSkipped:\n${rejected.join("\n")}` : ""));
 
 function summary(text) {

@@ -52,6 +52,13 @@ function wordAllowed(text, g) {
   }
   return true;
 }
+// A lipogram covers everything the reader sees, not just words: determiners and beat lines too.
+function lipogramOk(text, g) {
+  const t = bareText(text).toLowerCase();
+  return !(g.rules?.constraints || []).some((c) => c.type === "lipogram" && [...String(c.letters).toLowerCase()].some((ch) => t.includes(ch)));
+}
+// A pool word passes if its text, and any determiner it brings, pass.
+const entryAllowed = (w, g) => wordAllowed(w.t, g) && (!w.det || lipogramOk(w.det, g));
 const grammarClosed = (g) => (g.rules?.constraints || []).some((c) => c.type === "closed");
 function describeConstraint(c) {
   if (c.type === "lipogram") return `no letter ${[...String(c.letters)].map((x) => `“${x}”`).join(", ")}`;
