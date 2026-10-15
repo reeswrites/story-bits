@@ -134,7 +134,7 @@ function player(pid, key = "") {
   const p = { pid, ws, last: null, ctx: undefined, errors: [], waiters: [] };
   ws.addEventListener("message", (e) => {
     const m = JSON.parse(e.data);
-    if (m.t === "state") p.last = m.room;
+    if (m.t === "state") { p.last = m.room; p.you = m.you; }
     if (m.t === "space") p.ctx = m.ctx;
     if (m.t === "error") p.errors.push(m.error);
     p.waiters = p.waiters.filter((w) => !w(m));
@@ -152,7 +152,7 @@ const host = player("player-host-0001");
 await host.open;
 await host.until((p) => p.last?.keys, 15000);
 host.send({ t: "hello", pid: host.pid, name: "Ana" });
-await host.until((p) => p.last.host === host.pid);
+await host.until((p) => p.you?.pid && p.last.host === p.you.pid);
 const guest = player("player-guest-002", host.last.keys.comment);
 await guest.open;
 guest.send({ t: "hello", pid: guest.pid, name: "Cy" });
@@ -171,8 +171,10 @@ assert.ok(!JSON.stringify(guest.last).includes(edit), "the jam never passes on t
 // Lore kept in the jam lands in the space.
 guest.send({ t: "lore", entry: { text: "the lighthouse keeper", card: "who", label: "Who" } });
 await host.until((p) => p.ctx?.lore?.length === 2);
-const lore = (await get()).body.space.lore;
+const lore = (await get(`?k=${comment}`)).body.space.lore;
 assert.equal(lore[1].jam, code);
+assert.equal((await get()).body.space.lore[1].jam, undefined, "public viewers aren't sent jam codes");
+assert.equal(host.ctx.lore[1].jam, undefined, "nor is anyone in a jam");
 assert.equal(lore[1].by, "Cy");
 
 // A finished workshop round goes into the space's jam history.
@@ -187,8 +189,9 @@ await host.until((p) => p.last.phase === "vote");
 host.send({ t: "end" });
 await host.until((p) => p.last.phase === "results");
 await new Promise((res) => setTimeout(res, 300));
-const jams = (await get()).body.space.jams;
+const jams = (await get(`?k=${comment}`)).body.space.jams;
 assert.equal(jams[0].code, code);
+assert.equal((await get()).body.space.jams[0].code, undefined, "public viewers aren't sent jam codes");
 assert.equal(jams[0].rounds.length, 1);
 assert.deepEqual(jams[0].rounds[0].names, ["Ana"]);
 

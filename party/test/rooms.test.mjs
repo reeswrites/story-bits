@@ -39,7 +39,10 @@ const a = player("player-aaaa-1");
 await a.open;
 await a.until((p) => p.you?.role === "edit" && p.last?.keys, 15000); // a fresh deploy can cold-start slowly
 a.send({ t: "hello", pid: a.pid, name: "Ana" });
-await a.until((p) => p.last.host === a.pid && p.last.owner === a.pid);
+await a.until((p) => p.you?.pid && p.last.host === p.you.pid && p.last.owner === p.you.pid);
+// Everyone is known by a public id, never the id their page sends.
+const id = (p) => p.you.pid;
+assert.notEqual(id(a), a.pid);
 const { edit, comment } = a.last.keys;
 
 const b = player("player-bbbb-2", edit);     // editor
@@ -50,12 +53,12 @@ b.send({ t: "hello", pid: b.pid, name: "Ben" });
 c.send({ t: "hello", pid: c.pid, name: "<i>Cy</i>" });
 v.send({ t: "hello", pid: v.pid, name: "Vi" });
 await a.until((p) => p.last.players.length === 4);
-await Promise.all([b, c, v].map((p) => p.until((q) => q.you)));
+await Promise.all([b, c, v].map((p) => p.until((q) => q.you?.pid)));
 assert.equal(b.you.role, "edit");
 assert.equal(c.you.role, "comment");
 assert.equal(v.you.role, "view");
 assert.equal(c.last.keys, null, "only editors see invite keys");
-assert.equal(a.last.players.find((x) => x.id === c.pid).name, "Cy", "names are cleaned");
+assert.equal(a.last.players.find((x) => x.id === id(c)).name, "Cy", "names are cleaned");
 
 // Together: the owner puts up a piece; patches flow; viewers and commenters can't edit.
 a.send({ t: "doc", doc: { v: 3, g: "story-bits", f: "bit", p: { who: { w: { n: 1 } } }, d: 1, s: 7, l: 2, b: {} } });
@@ -70,7 +73,7 @@ assert.equal(a.doc.p.who.w.n, 2, "viewers and commenters can't edit; bad paths a
 
 // Presence and comments.
 c.send({ t: "presence", sel: "who|n" });
-await a.until((p) => p.presence.some((x) => x.pid === c.pid && x.sel === "who|n"));
+await a.until((p) => p.presence.some((x) => x.pid === id(c) && x.sel === "who|n"));
 c.send({ t: "comment", at: "who|n", quote: "your dentist", text: "funnier as the barber?" });
 v.send({ t: "comment", at: "who|n", text: "viewers can't comment" });
 await a.until((p) => p.last.comments.length === 1);
@@ -93,11 +96,11 @@ assert.equal(a.last.players.filter((x) => x.submitted).length, 2);
 assert.equal(a.last.entries.length, 0, "copies stay hidden until the reveal");
 a.send({ t: "vote" });
 await c.until((p) => p.last.phase === "vote" && p.last.entries.length === 2);
-c.send({ t: "comment", entry: b.pid, text: "the turn lands" });
-b.send({ t: "clap", to: b.pid }); // self: ignored
-for (let i = 0; i < 7; i++) c.send({ t: "clap", to: b.pid }); // capped at 5
-a.send({ t: "clap", to: b.pid });
-await a.until((p) => p.last.entries.find((e) => e.id === b.pid)?.claps === 6);
+c.send({ t: "comment", entry: id(b), text: "the turn lands" });
+b.send({ t: "clap", to: id(b) }); // self: ignored
+for (let i = 0; i < 7; i++) c.send({ t: "clap", to: id(b) }); // capped at 5
+a.send({ t: "clap", to: id(b) });
+await a.until((p) => p.last.entries.find((e) => e.id === id(b))?.claps === 6);
 a.send({ t: "end" });
 await b.until((p) => p.last.phase === "results");
 assert.equal(b.last.stored, 1);
@@ -105,7 +108,7 @@ assert.deepEqual(b.last.history[0].top, ["Ben"]);
 
 // Host handoff: the owner leaves; an editor takes over (not the commenter).
 a.ws.close();
-await b.until((p) => p.last.host === b.pid, 15000);
+await b.until((p) => p.last.host === id(b), 15000);
 b.send({ t: "forget" });
 await c.until((p) => p.last.stored === 0 && p.last.comments.length === 0);
 

@@ -35,13 +35,22 @@ const MAX_VERSIONS = 100;
 const MAX_COMMENTS = 1000;
 const MAX_LORE = 500;
 const MAX_JAMS = 100;
-const MAX_ROUNDS = 50;
+const MAX_ROUNDS = 20;
+// Lore and jam history are one stored value each; keep each well under a value's limit.
+const MAX_LORE_BYTES = 1024 * 1024;
+const MAX_JAMS_BYTES = 512 * 1024;
 // Last-use is written at most this often, so reading a busy public space isn't a write each time.
 const TOUCH_EVERY = 60 * 60 * 1000;
 
 const clean = (s, n) => String(s ?? "").replace(/<[^>]*>/g, "").replace(/[{}<>]/g, "").replace(/\s+/g, " ").trim().slice(0, n);
 const size = (x) => { try { return JSON.stringify(x).length; } catch { return Infinity; } };
 const isObj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const own = (o, k) => typeof k === "string" && Object.hasOwn(o, k);
+// Drop the oldest until a list fits.
+const trim = (list, max) => { while (list.length > 1 && size(list) > max) list.shift(); return list; };
+// Jam codes are enough to watch a jam (a jam's viewers need no key). Only people invited to the
+// space with a comment key or better see which jams it holds.
+const hideJam = ({ jam, ...l }) => l;
 const token = () => [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(36).padStart(2, "0")).join("").slice(0, 16);
 const GID = /^[a-z][a-z0-9-]{1,39}$/;
 const PID = /^[\w-]{8,64}$/;
@@ -81,6 +90,7 @@ export class StorySpace extends Server {
   }
   // A deleted space keeps only a marker, so its id is never reused for something else.
   async wipe() {
+    await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.meta = { gone: Date.now() };
     await this.saveMeta();
@@ -107,11 +117,15 @@ export class StorySpace extends Server {
     const heads = {};
     for (const it of items) if (it.kind === "grammar") heads[it.gid] = await this.ctx.storage.get(`gv:${it.gid}:${it.head}`);
     const keys = role === "owner" ? m.keys : role === "edit" ? { edit: m.keys.edit, comment: m.keys.comment, view: m.keys.view } : null;
+    const inside = ROLE_RANK[role] >= ROLE_RANK.comment;
+    const lore = await this.list("lore");
+    const jams = await this.list("jams");
     return {
       id: this.name, name: m.name, public: !!m.public, retain: m.retain, created: m.created, used: m.used,
       expiresAt: this.expiresAt(), role, keys, bytes: m.bytes || 0,
       items: items.map((it) => (it.kind === "grammar" ? { ...it, data: heads[it.gid] } : it)),
-      comments, lore: await this.list("lore"), jams: await this.list("jams"),
+      comments, lore: inside ? lore : lore.map(hideJam),
+      jams: inside ? jams : jams.map(({ code, ...j }) => j),
     };
   }
   // Everything, every grammar version included: for export.
@@ -130,16 +144,15 @@ export class StorySpace extends Server {
     const url = new URL(req.url);
     const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
     if (req.method === "GET") {
+      // Reads by GET are for public spaces (ids in the URL, no keys): pages send keys in a POST
+      // body (ops "get" and "gv"), so keys stay out of URLs and logs. GET still takes ?k= from
+      // pages that haven't reloaded since.
       if (!this.live()) return reply(404, { error: this.meta?.gone ? "This space was deleted." : "No such space." });
       const role = this.roleFor(url.searchParams.get("k") || "");
       if (!role) return reply(403, { error: "This space is private. You need an invite link." });
       await this.touch();
       const gv = url.searchParams.get("gv");
-      if (gv) {
-        const [gid, n] = gv.split("@");
-        const doc = GID.test(gid || "") && /^\d{1,3}$/.test(n || "") ? await this.ctx.storage.get(`gv:${gid}:${+n}`) : null;
-        return doc ? reply(200, { gid, ver: +n, doc }) : reply(404, { error: "No such version." });
-      }
+      if (gv) return this.version(gv, reply);
       const pid = url.searchParams.get("pid");
       return reply(200, { space: await this.view(role, PID.test(pid || "") ? pid : null) });
     }
@@ -150,6 +163,12 @@ export class StorySpace extends Server {
     try { m = JSON.parse(raw); } catch { return reply(400, { error: "Not JSON." }); }
     if (!isObj(m) || typeof m.op !== "string") return reply(400, { error: "No op." });
     try {
+      if (m.op === "gv") {
+        if (!this.live()) return reply(404, { error: "No such space." });
+        if (!this.roleFor(typeof m.k === "string" ? m.k : "")) return reply(403, { error: "This space is private. You need an invite link." });
+        await this.touch();
+        return this.version(m.gv, reply);
+      }
       const out = await this.op(m);
       return reply(out.status || 200, out);
     } catch (e) {
@@ -157,12 +176,18 @@ export class StorySpace extends Server {
     }
   }
 
+  async version(gv, reply) {
+    const [gid, n] = String(gv).split("@");
+    const doc = GID.test(gid || "") && /^\d{1,3}$/.test(n || "") ? await this.ctx.storage.get(`gv:${gid}:${+n}`) : null;
+    return doc ? reply(200, { gid, ver: +n, doc }) : reply(404, { error: "No such version." });
+  }
+
   // ---------- ops ----------
   async op(m) {
     const fail = (status, message) => { const e = new Error(message); e.status = status; throw e; };
     if (m.op === "create") {
       if (this.meta) fail(409, this.meta.gone ? "That id was used by a deleted space." : "That space already exists.");
-      const retain = m.retain in SPACE_RETAIN ? m.retain : "keep";
+      const retain = own(SPACE_RETAIN, m.retain) ? m.retain : "keep";
       const now = Date.now();
       this.meta = {
         name: clean(m.name, 60) || "A space", public: false, retain, created: now, used: now, seq: 0, bytes: 0,
@@ -180,8 +205,9 @@ export class StorySpace extends Server {
     const done = async () => { await this.touch(true); return { space: await this.view(role, pid) }; };
 
     switch (m.op) {
-      case "get":
-        return done();
+      case "get": // a read: moves the retention clock at most hourly, like GET
+        await this.touch();
+        return { space: await this.view(role, pid) };
       case "export":
         if (!can("edit")) fail(403, "Editors can export a space.");
         await this.touch(true);
@@ -287,7 +313,7 @@ export class StorySpace extends Server {
         if (m.name !== undefined) this.meta.name = clean(m.name, 60) || this.meta.name;
         if (typeof m.public === "boolean") this.meta.public = m.public;
         if (m.retain !== undefined) {
-          if (!(m.retain in SPACE_RETAIN)) fail(400, "Keep it until deleted, for a year, or for a month after last use.");
+          if (!own(SPACE_RETAIN, m.retain)) fail(400, "Keep it until deleted, for a year, or for a month after last use.");
           this.meta.retain = m.retain;
         }
         await this.saveMeta();
@@ -313,11 +339,11 @@ export class StorySpace extends Server {
       id: `l${this.meta.seq}`, text, card: clean(e.card, 30), label: clean(e.label, 30),
       g: typeof e.g === "string" && GID.test(e.g) ? e.g : null,
       // The phrase itself (word values), so a jam can drop it back into a piece. Opaque here.
-      ...(isObj(e.ph) && size(e.ph) <= 8 * 1024 && { ph: e.ph }),
+      ...(isObj(e.ph) && size(e.ph) <= 2 * 1024 && { ph: e.ph }),
       by: clean(name, 24), ...(jam && { jam }), ts: Date.now(),
     };
     lore.push(entry);
-    const kept = lore.slice(-MAX_LORE);
+    const kept = trim(lore.slice(-MAX_LORE), MAX_LORE_BYTES);
     await this.ctx.storage.put("lore", kept);
     await this.saveMeta();
     return kept;
@@ -332,7 +358,7 @@ export class StorySpace extends Server {
     return {
       id: this.name, name: this.meta.name, public: !!this.meta.public, grammars,
       cast: items.filter((it) => it.kind === "cast").map((it) => ({ id: it.id, name: it.name, data: it.data })),
-      lore: await this.list("lore"),
+      lore: (await this.list("lore")).map(hideJam),
     };
   }
   // The jam's host proves they can edit the space; the space remembers the jam.
@@ -343,7 +369,7 @@ export class StorySpace extends Server {
     const jams = await this.list("jams");
     if (!jams.some((j) => j.code === code)) {
       jams.push({ code, at: Date.now(), rounds: [] });
-      await this.ctx.storage.put("jams", jams.slice(-MAX_JAMS));
+      await this.ctx.storage.put("jams", trim(jams.slice(-MAX_JAMS), MAX_JAMS_BYTES));
     }
     await this.touch(true);
     return this.context();
@@ -358,7 +384,7 @@ export class StorySpace extends Server {
     if (!(await this.linked(code))) return null;
     try { await this.addLore(entry, name, code); } catch { return null; }
     await this.touch();
-    return this.list("lore");
+    return (await this.list("lore")).map(hideJam);
   }
   async jamRound(code, round) {
     if (!(await this.linked(code)) || !isObj(round)) return false;
@@ -369,7 +395,7 @@ export class StorySpace extends Server {
       names: (Array.isArray(round.names) ? round.names : []).slice(0, 24).map((n) => clean(n, 24)),
       top: (Array.isArray(round.top) ? round.top : []).slice(0, 24).map((n) => clean(n, 24)),
     }].slice(-MAX_ROUNDS);
-    await this.ctx.storage.put("jams", jams);
+    await this.ctx.storage.put("jams", trim(jams, MAX_JAMS_BYTES));
     await this.touch();
     return true;
   }

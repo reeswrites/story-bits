@@ -226,6 +226,12 @@ function checkGrammar(g) {
   }
   if (r.grounded !== undefined && !keys.has(r.grounded)) return "rules.grounded must name a card";
   if (r.constraints !== undefined && (!Array.isArray(r.constraints) || r.constraints.length > 6 || !r.constraints.every((c) => c && CONSTRAINT_TYPES.includes(c.type)))) return "constraints are a short list of known types";
+  // Their settings end up on the page (and in the editor's inputs): letters and small numbers only.
+  for (const c of r.constraints || []) {
+    if (c.type === "lipogram" && (typeof c.letters !== "string" || !/^[a-z]{1,10}$/i.test(c.letters))) return "a lipogram names up to 10 letters";
+    if (c.type === "startsWith" && (typeof c.letter !== "string" || !/^[a-z]$/i.test(c.letter))) return "startsWith names one letter";
+    if (c.type === "maxSyllables" && (!Number.isInteger(c.n) || c.n < 1 || c.n > 6)) return "maxSyllables is 1–6";
+  }
   if (!g.forms || typeof g.forms !== "object" || !Object.keys(g.forms).length || Object.keys(g.forms).length > 16) return "needs 1–16 forms";
   for (const [k, f] of Object.entries(g.forms)) {
     if (!/^[a-z][a-z0-9-]{0,23}$/.test(k)) return `form key "${k}" should be a short lowercase slug`;

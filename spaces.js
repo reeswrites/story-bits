@@ -22,8 +22,10 @@ async function fetchVersion(sp, gid, ver) {
   if (knownVersion({ gs: sp, gv: ver }, gid)) return knownVersion({ gs: sp, gv: ver }, gid);
   const mine = spaces.list.find((s) => s.id === sp);
   try {
-    const q = new URLSearchParams({ gv: `${gid}@${ver}`, ...(mine?.k && { k: mine.k }) });
-    const res = await fetch(`${spaceUrl(sp)}?${q}`);
+    // Keys go in a POST body, never the URL; a public space answers a plain GET.
+    const res = mine?.k
+      ? await fetch(spaceUrl(sp), { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ op: "gv", gv: `${gid}@${ver}`, k: mine.k }) })
+      : await fetch(`${spaceUrl(sp)}?${new URLSearchParams({ gv: `${gid}@${ver}` })}`);
     if (!res.ok) return null;
     const out = await res.json();
     // Without a key, a space only answers if it's public.
@@ -101,7 +103,8 @@ function checkSpace(v) {
     keys: v.keys && typeof v.keys === "object" ? v.keys : null, items, dropped,
     comments: (Array.isArray(v.comments) ? v.comments : []).filter((c) => c && typeof c.text === "string" && typeof c.item === "string"),
     lore: (Array.isArray(v.lore) ? v.lore : []).filter((l) => l && typeof l.text === "string" && l.text),
-    jams: (Array.isArray(v.jams) ? v.jams : []).filter((j) => j && ROOM_CODE.test(j.code)),
+    // Viewers aren't sent jam codes (a code is enough to watch a jam).
+    jams: (Array.isArray(v.jams) ? v.jams : []).filter((j) => j && (j.code === undefined || ROOM_CODE.test(j.code))),
   };
 }
 // Take a view from the server: check it, and keep what this browser lists about it current.
@@ -115,8 +118,8 @@ function takeSpace(raw) {
 }
 
 async function loadSpace(id, k) {
-  const q = new URLSearchParams({ pid: spacePid(), ...(k && { k }) });
-  const res = await fetch(`${spaceUrl(id)}?${q}`);
+  // A POST, so the key and your comment id stay out of URLs (and any log of them).
+  const res = await fetch(spaceUrl(id), { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ op: "get", pid: spacePid(), ...(k && { k }) }) });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) { const e = new Error(out.error || "That space couldn't be opened."); e.status = res.status; throw e; }
   return takeSpace(out.space);
@@ -523,7 +526,7 @@ function renderSpaces() {
     const list = (k, title, empty, add) => `<h4 class="dial-label">${title} <span class="count">${of(k).length}</span></h4>
       ${of(k).length ? `<ul class="sp-items">${of(k).map((it) => itemHtml(v, it)).join("")}</ul>` : `<p class="empty">${empty}</p>`}${can("edit") && add ? `<div class="cp-row">${add}</div>` : ""}`;
     const lore = v.lore.length ? `<ul class="sp-lore">${v.lore.map((l) => `<li><button class="sp-lore-use" data-sp-lore="${esc(l.id)}" title="Use this phrase${l.label ? ` as the ${esc(l.label.toLowerCase())}` : ""}">“${esc(cleanWord(l.text))}”</button><span class="sp-sub">${esc(cleanWord(l.label || ""))}${l.by ? ` · ${esc(cleanWord(l.by))}` : ""}${l.jam ? ` · jam ${esc(l.jam)}` : ""}</span>${can("edit") ? `<button class="bw-x" data-sp-unlore="${esc(l.id)}" aria-label="Forget this phrase">✕</button>` : ""}</li>`).join("")}</ul>` : `<p class="empty">No lore yet. Tap a word, then <i>Keep as lore</i>, to keep the phrase it's in; reusing one later is a callback.</p>`;
-    const jams = v.jams.length ? `<ol class="sp-jams">${v.jams.slice().reverse().map((j) => `<li>Jam <b>${esc(j.code)}</b> · ${when(j.at)}${j.rounds?.length ? ` · ${j.rounds.length} round${j.rounds.length === 1 ? "" : "s"}${j.rounds.filter((r) => r.top?.length).slice(-1).map((r) => `, last won by ${esc(r.top.map(cleanWord).join(" & "))}`).join("")}` : ""}</li>`).join("")}</ol>` : `<p class="empty">No jams here yet.</p>`;
+    const jams = v.jams.length ? `<ol class="sp-jams">${v.jams.slice().reverse().map((j) => `<li>${j.code ? `Jam <b>${esc(j.code)}</b>` : "A jam"} · ${when(j.at)}${Array.isArray(j.rounds) && j.rounds.length ? ` · ${j.rounds.length} round${j.rounds.length === 1 ? "" : "s"}${j.rounds.filter((r) => r.top?.length).slice(-1).map((r) => `, last won by ${esc(r.top.map(cleanWord).join(" & "))}`).join("")}` : ""}</li>`).join("")}</ol>` : `<p class="empty">No jams here yet.</p>`;
     const invites = v.keys ? `<div class="rb-invites"><span class="dial-label">Invite</span>
         <button class="ghost" data-sp-invite="edit">Edit link</button><button class="ghost" data-sp-invite="comment">Comment link</button><button class="ghost" data-sp-invite="view">View link</button>${v.public ? `<button class="ghost" data-sp-invite="public">Public link</button>` : ""}${v.role === "owner" ? `<button class="ghost subtle" data-sp-invite="owner" title="Keep this somewhere safe: it's how you manage the space from another browser">Owner link</button>` : ""}</div>` : v.public ? `<div class="rb-invites"><button class="ghost" data-sp-invite="public">Copy public link</button></div>` : "";
     body = `${visiting ? `<div class="lib-incoming"><p><b>You're visiting “${esc(v.name)}”${v.role !== "view" ? ` as ${v.role === "owner" ? "its owner" : `a${v.role === "edit" ? "n editor" : " commenter"}`}` : ""}.</b> Add it to your spaces to keep its link in this browser.</p><div class="cp-row"><button class="primary" data-sp-join>Add to my spaces</button></div></div>` : ""}

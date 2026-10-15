@@ -14,6 +14,12 @@
     { "tag": "v1", "new_sqlite_classes": ["StoryRoom"] },
     { "tag": "v2", "new_sqlite_classes": ["StorySpace"] }
   ],
+  // Per-address budgets a minute (see limited() in server.js): opening jam connections, and
+  // space requests (an import makes one per item, hence the higher budget).
+  "ratelimits": [
+    { "name": "JOIN_LIMIT", "namespace_id": "4101", "simple": { "limit": 60, "period": 60 } },
+    { "name": "SPACE_LIMIT", "namespace_id": "4102", "simple": { "limit": 400, "period": 60 } }
+  ],
   "vars": {
     // Pages that may open a room. Comma-separated origins; localhost is always allowed.
     "ALLOWED_ORIGINS": "https://reeswrites.com"

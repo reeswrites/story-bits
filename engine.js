@@ -78,7 +78,7 @@ function choose(arr, rng) { return arr[Math.floor(rng() * arr.length)]; }
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 // UTF-8 safe base64url, for links that carry your own words.
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
@@ -254,7 +254,7 @@ const phraseText = (slot) => flat(tokens(slot, state.pick[slot], person(), slot)
 function tokHtml(toks, slot, capFirst) {
   let first = capFirst;
   return toks.map((t) => {
-    if (t.ghost) return `<button class="ghost-slot" data-add="${slot}" data-path="${t.path.join(".")}" title="Add a ${t.ghost.name}">+ ${t.ghost.name}</button>`;
+    if (t.ghost) return `<button class="ghost-slot" data-add="${slot}" data-path="${t.path.join(".")}" title="Add a ${esc(t.ghost.name)}">+ ${esc(t.ghost.name)}</button>`;
     if (t.group) {
       const h = `<span class="ph nested">${tokHtml(t.group, slot, first)}</span>`;
       first = false;

@@ -18,7 +18,8 @@ const ROOMS_PROD = "story-bits-rooms.peregrine-rd.workers.dev";
 const ROOMS_HOST = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? `${location.hostname}:8799` : ROOMS_PROD;
 const ROOM_CODE = /^[A-Z0-9]{4,8}$/;
 const ROOM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-const newRoomCode = () => Array.from({ length: 5 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join("");
+// Eight characters: a jam's code is enough to watch it, so it shouldn't be guessable.
+const newRoomCode = () => Array.from({ length: 8 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join("");
 const ROLE_RANK = { view: 0, comment: 1, edit: 2 };
 const ROLE_NAMES = { edit: "editor", comment: "commenter", view: "viewer" };
 
@@ -33,11 +34,14 @@ function playerId() {
 const NAME_KEY = "story-bits-name";
 const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; } };
 
+// Your id in this jam, as the jam shows it to everyone (a hash of playerId(), which stays secret:
+// whoever sends it is you).
+const jamMe = () => state.room?.you?.pid || "";
 const jamData = () => state.room?.data;
 const jamRole = () => state.room?.you?.role || "view";
 const jamCan = (need) => !!state.room && ROLE_RANK[jamRole()] >= ROLE_RANK[need];
-const isRoomHost = () => !!jamData() && jamData().host === playerId();
-const roomMe = () => jamData()?.players.find((p) => p.id === playerId());
+const isRoomHost = () => !!jamData() && !!jamMe() && jamData().host === jamMe();
+const roomMe = () => jamData()?.players.find((p) => p.id === jamMe());
 const roomSend = (m) => { const ws = state.room?.ws; if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
 const inTogether = () => !!state.room && jamData()?.mode === "together";
 const jamReadOnly = () => inTogether() && jamRole() !== "edit";
@@ -101,7 +105,7 @@ function onRoomMessage(room, m) {
   else if (m.t === "patch" && m.set && typeof m.set === "object") {
     if (!room.doc) { roomSend({ t: "sync" }); return; }
     patchInto(room.doc, m.set);
-    if (m.by === playerId()) return; // our own change, already on screen
+    if (m.by === jamMe()) return; // our own change, already on screen
     applyDoc();
   }
   else if (m.t === "presence" && Array.isArray(m.list)) { room.presence = m.list; paintPeers(); renderRoomBar(); }
@@ -211,7 +215,7 @@ function paintPeers() {
   document.querySelectorAll(".peer").forEach((el) => { el.classList.remove("peer"); delete el.dataset.peer; el.style.removeProperty("--peer"); });
   if (!state.room) return;
   for (const p of state.room.presence) {
-    if (p.pid === playerId() || !p.sel) continue;
+    if (p.pid === jamMe() || !p.sel) continue;
     for (const el of anchorEls(p.sel)) {
       if (el.classList.contains("peer")) continue;
       el.classList.add("peer");
@@ -240,7 +244,7 @@ function jamPickerHtml(at, quote) {
   return `<div class="jam-notes">${list ? `<h4 class="dial-label">Comments</h4>${list}` : ""}${form}</div>`;
 }
 function noteHtml(c, showQuote = false) {
-  const mine = c.pid === playerId();
+  const mine = !!jamMe() && c.pid === jamMe();
   return `<div class="note${c.resolved ? " resolved" : ""}">
     ${showQuote && c.quote ? `<button class="note-quote" data-jc-show="${esc(c.at || "")}">“${esc(c.quote)}”</button>` : ""}
     <p><b>${esc(c.name || "someone")}</b> ${esc(c.text)}</p>
@@ -262,7 +266,7 @@ function showAnchor(at) {
 function clapDisabled(e) {
   if (!state.room) return false;
   const d = jamData();
-  return d?.phase !== "vote" || e.id === playerId() || !jamCan("comment") || (roomMe()?.clapsLeft ?? 0) <= 0;
+  return d?.phase !== "vote" || e.id === jamMe() || !jamCan("comment") || (roomMe()?.clapsLeft ?? 0) <= 0;
 }
 const clapsOn = () => !state.room || !!jamData()?.rules?.claps;
 // Notes on one copy, and a box to add one (comment and edit roles).
@@ -270,7 +274,7 @@ function jamCardHtml(e) {
   if (!state.room || !e.id) return "";
   const d = jamData();
   const notes = (d?.comments || []).filter((c) => c.entry === e.id && c.round === d.round);
-  const form = d?.phase === "vote" && jamCan("comment") && e.id !== playerId() ? `<form class="jam-note-form" data-note-entry="${esc(e.id)}" autocomplete="off">
+  const form = d?.phase === "vote" && jamCan("comment") && e.id !== jamMe() ? `<form class="jam-note-form" data-note-entry="${esc(e.id)}" autocomplete="off">
       <input name="note" maxlength="600" placeholder="A note for ${esc(e.name || "them")}" aria-label="Note">
       <button type="submit">Add</button></form>` : "";
   return notes.length || form ? `<div class="jam-notes">${notes.map((c) => noteHtml(c)).join("")}${form}</div>` : "";
@@ -326,7 +330,7 @@ function renderRoomBar() {
   const role = jamRole();
   const host = d?.players.find((p) => p.id === d.host);
   const looking = (pid) => room.presence.find((x) => x.pid === pid)?.sel;
-  const players = (d?.players || []).map((p) => `<li class="${p.online ? "" : "away"}" style="--peer: hsl(${hue(p.id)} 65% 45%)">${p.id === d.host ? `<span title="host">★</span> ` : ""}${esc(p.name || "someone")}${p.id === playerId() ? " (you)" : ""} <span class="role">${ROLE_NAMES[p.role] || "viewer"}</span>${d.mode === "workshop" && d.phase === "play" && p.submitted ? ` <span class="ok">sent</span>` : ""}${d.mode === "workshop" && d.phase === "vote" && d.rules.claps && p.role !== "view" ? ` <span class="claps">${p.clapsLeft} 👏</span>` : ""}${d.mode === "together" && looking(p.id) && p.id !== playerId() ? ` <span class="looking">on a word</span>` : ""}</li>`).join("");
+  const players = (d?.players || []).map((p) => `<li class="${p.online ? "" : "away"}" style="--peer: hsl(${hue(p.id)} 65% 45%)">${p.id === d.host ? `<span title="host">★</span> ` : ""}${esc(p.name || "someone")}${p.id === jamMe() ? " (you)" : ""} <span class="role">${ROLE_NAMES[p.role] || "viewer"}</span>${d.mode === "workshop" && d.phase === "play" && p.submitted ? ` <span class="ok">sent</span>` : ""}${d.mode === "workshop" && d.phase === "vote" && d.rules.claps && p.role !== "view" ? ` <span class="claps">${p.clapsLeft} 👏</span>` : ""}${d.mode === "together" && looking(p.id) && p.id !== jamMe() ? ` <span class="looking">on a word</span>` : ""}</li>`).join("");
   let body = "";
   if (!d) body = `<p class="rb-phase">${room.ws ? "Joining…" : "Connecting…"}</p>`;
   else if (d.mode === "together") {
@@ -369,7 +373,7 @@ function renderRoomBar() {
     <div class="rb-top">
       <div><span class="eyebrow">Jam · you're ${role === "edit" ? "an editor" : role === "comment" ? "a commenter" : "a viewer"}</span><span class="rb-code">${esc(room.code)}</span>${room.ws ? "" : ` <span class="rb-off">reconnecting…</span>`}</div>
       <div class="rb-actions">
-        ${isRoomHost() && d ? `<span class="seg rb-mode"><label><input type="radio" name="rb-mode" value="together" ${d.mode === "together" ? "checked" : ""}>together</label><label><input type="radio" name="rb-mode" value="workshop" ${d.mode === "workshop" ? "checked" : ""}>workshop</label></span>` : d ? `<span class="rb-modename">${d.mode}</span>` : ""}
+        ${isRoomHost() && d ? `<span class="seg rb-mode"><label><input type="radio" name="rb-mode" value="together" ${d.mode === "together" ? "checked" : ""}>together</label><label><input type="radio" name="rb-mode" value="workshop" ${d.mode === "workshop" ? "checked" : ""}>workshop</label></span>` : d ? `<span class="rb-modename">${esc(d.mode)}</span>` : ""}
         <button id="rb-leave" class="ghost subtle">Leave</button>
       </div>
     </div>

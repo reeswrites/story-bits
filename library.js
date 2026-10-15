@@ -298,7 +298,7 @@ document.addEventListener("change", (e) => {
       const cs = [];
       if (box("lipogram").checked && cleanWord(val("lipogram"))) cs.push({ type: "lipogram", letters: cleanWord(val("lipogram")).toLowerCase().replace(/[^a-z]/g, "") });
       if (box("startsWith").checked && /^[a-z]$/i.test(val("startsWith"))) cs.push({ type: "startsWith", letter: val("startsWith").toLowerCase() });
-      if (box("maxSyllables").checked) cs.push({ type: "maxSyllables", n: Math.max(1, Math.min(6, +val("maxSyllables") || 2)) });
+      if (box("maxSyllables").checked) cs.push({ type: "maxSyllables", n: Math.max(1, Math.min(6, Math.round(+val("maxSyllables")) || 2)) });
       if (box("closed").checked) cs.push({ type: "closed" });
       if (cs.length) g.rules.constraints = cs; else delete g.rules.constraints;
     });
