@@ -70,7 +70,10 @@ function grammarEditHtml(at) {
   const v = slotEdit(G, at.schema, at.k, cur, names);
   if (!v) return "";
   const tabs = [["words", "Words"], ["word", "This word"], ["slots", "Slots"]];
-  const step = ge.step && undoTop() === ge.step ? ge.step : null;
+  // The last edit's note, while it's still the latest step and the grammar is where it left it
+  // (an undo redraws the picker before the step leaves the top of the timeline).
+  const st = ge.step;
+  const step = st && undoTop() === st && library[st.id] === G && versions[st.id]?.cur === st.after ? st : null;
   if (!step) ge.forkedFrom = "";
   const note = step ? `<p class="ge-note" role="status">${ge.forkedFrom ? `<b>You're now editing your own copy of ${esc(ge.forkedFrom)}.</b> ` : ""}${esc(cap(step.label))}. <button class="ge-undo" data-ge="undo" ${geKey("undo")}>Undo</button></p>` : "";
   const err = ge.err ? `<p class="bf-error ge-err" role="alert">${esc(cap(ge.err))}.</p>` : "";
