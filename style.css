@@ -399,3 +399,14 @@ body.in-room #challenge, body.in-room #daily, body.in-room #live, body.in-room #
 body.room-compare .cmp-add, body.room-compare #cmp-close { display: none !important; }
 .clap:disabled { opacity: .45; cursor: default; }
 .crown.mine { color: var(--ink-2); }
+
+/* ---- grammars ---- */
+.grammar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 12px; }
+.grammar-label { display: inline-flex; align-items: center; gap: 10px; }
+#grammar-pick {
+  font: 600 18px "Fraunces", Georgia, serif; color: var(--ink); background: var(--card);
+  border: 1.5px solid var(--ink); border-radius: 8px; padding: 6px 10px; min-height: 40px;
+}
+.grammar-desc { flex: 1 1 260px; margin: 0; color: var(--ink-2); font-size: 14px; font-style: italic; }
+body.in-game .grammar-row { display: none; }
+.word.handle { color: var(--ink-2); }

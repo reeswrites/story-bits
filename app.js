@@ -1,37 +1,57 @@
-// Story Bits: "x happened to p and they feel e about it", tuned word by word.
+// Story Bits: tune a piece word by word, in a grammar you can swap, fork and share.
+// The engine below knows nothing about any one grammar: cards, slots, word pools, the headline
+// line, forms and the dial's rules all come from the active grammar (GRAMMARS in data.js, or the
+// library). See docs/design.md.
 
-const SLOTS = [
-  { key: "who", label: "Who", hint: "the character" },
-  { key: "what", label: "What happened", hint: "the event" },
-  { key: "feel", label: "How they feel", hint: "the feeling" },
-  { key: "where", label: "Where", hint: "the place" },
-  { key: "thing", label: "Thing", hint: "the object" },
-];
-const DIAL_NOTES = [
-  "No pair clashes. A thing your mom would tell you on the phone.",
-  "One pair clashes: the feeling doesn't fit what happened.",
-  "Every pair in play clashes. The world gets strange, then lands safely.",
-];
+// The active grammar, and the parts of it the engine reads most. useGrammar() swaps them.
+let G, SLOTS, SCHEMAS, FORMS, PAIRS, MAX_DEPTH, DIAL_NOTES;
+function useGrammar(g) {
+  G = g;
+  SLOTS = g.cards;
+  SCHEMAS = g.schemas;
+  FORMS = g.forms;
+  PAIRS = g.rules.pairs;
+  MAX_DEPTH = g.maxDepth;
+  DIAL_NOTES = g.rules.dialNotes;
+}
+// Run fn with another grammar active, then put the current one back.
+function withGrammar(g, fn) {
+  const prev = G;
+  if (g === prev) return fn();
+  useGrammar(g);
+  try { return fn(); } finally { useGrammar(prev); }
+}
 
-// The story's shape comes from its form (FORMS in data.js): each length is a stanza that
-// says which cards are in play and which beats fill each paragraph.
-const form = () => FORMS[state.form] || FORMS.bit;
+// Your library: grammars you've forked, written or imported, kept in this browser.
+const LIB_KEY = "story-bits-grammars";
+function loadLibrary() {
+  try {
+    const out = {};
+    for (const g of JSON.parse(localStorage.getItem(LIB_KEY)) || []) if (!checkGrammar(g) && !GRAMMARS[g.id]) out[g.id] = g;
+    return out;
+  } catch { return {}; }
+}
+function saveLibrary() {
+  try { localStorage.setItem(LIB_KEY, JSON.stringify(Object.values(library))); } catch {}
+}
+let library = loadLibrary();
+useGrammar(GRAMMARS["story-bits"]);
+
+// The piece's shape comes from its form: each length is a stanza that says which cards are in
+// play and which beats fill each paragraph.
+const form = () => FORMS[state.form] || Object.values(FORMS)[0];
 const stanza = () => form().stanzas[state.len - 1];
 const maxLen = () => form().stanzas.length;
 
-// Incongruity is counted in pairs. Each new card adds a pair that can either fit or clash.
-// event/feeling clash when their mood disagrees; the others clash across registers
-// (plausible vs odd vs absurd), where a phrase's register is its strangest word.
-const PAIRS = [
-  { a: "what", b: "feel", label: "event ↔ feeling", from: 1 },
-  { a: "where", b: "what", label: "place ↔ event", from: 2 },
-  { a: "thing", b: "where", label: "thing ↔ place", from: 3 },
-];
+// Incongruity is counted in pairs (rules.pairs). Each pair of cards in play fits or clashes:
+// on mood (good / mixed / bad), on register (plausible / odd / absurd: a phrase's register is its
+// strangest word), or on sound (whether the two phrases start with the same letter).
 function clashes(pair, pick = state.pick) {
-  if (pair.a === "what" && pair.b === "feel") return phraseV("what", pick.what) !== phraseV("feel", pick.feel);
+  if (pair.on === "mood") return phraseV(pair.a, pick[pair.a]) !== phraseV(pair.b, pick[pair.b]);
+  if (pair.on === "sound") return phraseSound(pair.a, pick[pair.a]) !== phraseSound(pair.b, pick[pair.b]);
   return phraseTier(pair.a, pick[pair.a]) !== phraseTier(pair.b, pick[pair.b]);
 }
-// Which pairs the dial wants clashing: none, just event/feeling, or all.
+// Which pairs the dial wants clashing: none, just the first, or all.
 const wantClash = (i) => state.dial === 2 || (state.dial === 1 && i === 0);
 const pairsInPlay = () => PAIRS.filter((p) => stanza().slots.includes(p.a) && stanza().slots.includes(p.b));
 
@@ -40,6 +60,7 @@ const state = {
   dial: 1,
   len: 2,
   form: "bit",
+  grammar: "story-bits",
   seed: 1,
   beats: {}, // beat key -> line index, for beats tuned by hand (the rest come from the seed)
   pins: [], // "slot|path" for words and "beat|key" for beats that survive shuffles
@@ -71,10 +92,12 @@ const unb64 = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/
 // ---------- word bank (yours, kept in this browser) ----------
 const BANK_KEY = "story-bits-bank";
 const partOf = (schema, k) => SCHEMAS[schema].parts.find((p) => p.k === k);
-const sameWord = (a, b) => a.s === b.s && a.k === b.k && a.t.toLowerCase() === b.t.toLowerCase();
-const builtinHas = (e) => partOf(e.s, e.k).pool.some((p) => p.t.toLowerCase() === e.t.toLowerCase());
+// Bank words belong to a grammar (g); older ones, from before grammars, belong to Story Bits.
+const gOf = (e) => e.g || "story-bits";
+const sameWord = (a, b) => gOf(a) === gOf(b) && a.s === b.s && a.k === b.k && a.t.toLowerCase() === b.t.toLowerCase();
+const builtinHas = (e, g = G) => !!partIn(g, e.s, e.k)?.pool.some((p) => p.t.toLowerCase() === e.t.toLowerCase());
 function loadBank() {
-  try { return (JSON.parse(localStorage.getItem(BANK_KEY)) || []).filter((e) => !checkEntry(e)); } catch { return []; }
+  try { return (JSON.parse(localStorage.getItem(BANK_KEY)) || []).filter((e) => e && typeof e.t === "string"); } catch { return []; }
 }
 function saveBank() {
   try { localStorage.setItem(BANK_KEY, JSON.stringify(bank)); } catch {}
@@ -83,8 +106,10 @@ let bank = loadBank();
 // Adds checked, new words. Returns how many were added.
 function addToBank(entries) {
   let n = 0;
-  for (const e of entries) {
-    if (checkEntry(e) || builtinHas(e) || bank.some((b) => sameWord(b, e))) continue;
+  for (let e of entries) {
+    e = { ...e, g: e.g || "story-bits" };
+    const gram = resolveGrammar(e.g);
+    if (!gram || checkEntry(e, gram) || builtinHas(e, gram) || bank.some((b) => sameWord(b, e))) continue;
     bank.push(e);
     n++;
   }
@@ -98,43 +123,59 @@ const asEntry = (s, k, v) => ({ s, k, t: v.c, tier: v.tier, ...(v.v !== undefine
 // ---------- phrases ----------
 // A phrase is { w: { slotKey: value }, sub: { slotKey: phrase }, x? }. A value is an index
 // into the slot's pool, or { c: text, tier, ... } for one of your own words. Absent optional
-// slots have no key. sub holds the nested thing for a word whose text contains {thing}.
-// x marks a thing nested in a noun's clause: it may not take a clause of its own.
+// slots have no key. sub holds the nested phrase for a word whose text names a card ({thing}).
+// x marks a phrase nested in a noun card's trailing clause: it may not take a trailing slot.
 function entryOf(schema, k, val) {
   if (typeof val === "number") return partOf(schema, k).pool[val];
-  return { ...poolEntry(asEntry(schema, k, val)), custom: true };
+  return { ...poolEntry(asEntry(schema, k, val), G), custom: true };
 }
 const word = (schema, ph, k) => entryOf(schema, k, ph.w[k]);
-const nests = (entry) => entry.t.includes("{thing}");
+// The card a word nests, if its text names one ({thing}), else null.
+function nestKey(entry) {
+  for (const m of entry.t.matchAll(/\{(\w+)\}/g)) if (SCHEMAS[m[1]]) return m[1];
+  return null;
+}
+const nests = (entry) => !!nestKey(entry);
+const subSchema = (schema, ph, k) => nestKey(word(schema, ph, k));
 
 function phraseTier(schema, ph) {
   let t = 0;
   for (const k in ph.w) t = Math.max(t, word(schema, ph, k).tier);
-  for (const k in ph.sub || {}) t = Math.max(t, phraseTier("thing", ph.sub[k]));
+  for (const k in ph.sub || {}) t = Math.max(t, phraseTier(subSchema(schema, ph, k), ph.sub[k]));
   return t;
 }
+// A card's mood is its head word's; cards without moods have none.
 const phraseV = (schema, ph) => word(schema, ph, "n").v;
+// A phrase's sound, for sound pairs: the first letter of its first word, past any determiner.
+function phraseSound(schema, ph) {
+  const t = tokens(schema, ph, person(), schema).find((x) => x.word !== undefined);
+  return (t?.word || "").trim().charAt(0).toLowerCase();
+}
 
 // Can this slot be filled, given the rest of the phrase?
 function allowed(schema, ph, part) {
-  if (part.k === "c" && ph.x) return false;
+  if (part.trailing && ph.x) return false;
   if (!part.needs) return true;
   if (part.needs === "adj") return !!word(schema, ph, "n").adj;
   return part.needs in ph.w;
 }
-// Every value a slot can take at this depth: the built-in words, then your bank.
+// Every value a slot can take at this depth: the grammar's words that pass its constraints,
+// then your bank's words for this grammar (unless the grammar is closed).
 function options(schema, part, depth) {
-  const out = part.pool.map((_, i) => i).filter((i) => depth < MAX_DEPTH || !nests(part.pool[i]));
-  if (!state.shared) for (const e of bank) if (e.s === schema && e.k === part.k) out.push(asValue(e));
+  const out = part.pool.map((_, i) => i).filter((i) => (depth < MAX_DEPTH || !nests(part.pool[i])) && wordAllowed(part.pool[i].t, G));
+  if (!state.shared && !grammarClosed(G)) for (const e of bank) if (gOf(e) === G.id && e.s === schema && e.k === part.k && !checkEntry(e, G)) out.push(asValue(e));
+  // A constraint that rules out every word in a required slot: fall back to the whole pool.
+  if (!out.length && !part.opt) return part.pool.map((_, i) => i).filter((i) => depth < MAX_DEPTH || !nests(part.pool[i]));
   return out;
 }
 
 // Set a word, growing or dropping its nested thing as needed, then drop anything it orphaned.
 function setWord(schema, ph, k, val, depth) {
   ph.w[k] = val;
-  if (nests(entryOf(schema, k, val))) {
+  const inner = nestKey(entryOf(schema, k, val));
+  if (inner) {
     ph.sub = ph.sub || {};
-    ph.sub[k] = randomPhrase("thing", depth + 1, undefined, schema === "thing" || schema === "where");
+    ph.sub[k] = randomPhrase(inner, depth + 1, undefined, !!(SCHEMAS[schema].noun && partOf(schema, k).trailing));
   } else if (ph.sub) delete ph.sub[k];
   tidy(schema, ph);
   return ph;
@@ -166,19 +207,21 @@ function randomPhrase(schema, depth = 0, shape = randomShape(schema, depth), x =
   for (const p of order) {
     if ((p.opt && !shape[p.k]) || !allowed(schema, ph, p)) continue;
     const ok = options(schema, p, depth);
-    setWord(schema, ph, p.k, ok[rand(ok.length)], depth);
+    if (ok.length) setWord(schema, ph, p.k, ok[rand(ok.length)], depth);
   }
   return ph;
 }
 
-// Walk a path of slot keys down through nested things to the phrase holding the last key.
+// Walk a path of slot keys down through nested phrases to the phrase holding the last key.
 // Returns null if the path no longer exists.
 function locate(slot, top, path) {
   let ph = top, schema = slot;
   for (const k of path.slice(0, -1)) {
-    if (!ph.sub || !ph.sub[k]) return null;
+    if (!ph.sub || !ph.sub[k] || !(k in ph.w)) return null;
+    const inner = subSchema(schema, ph, k);
+    if (!inner) return null;
     ph = ph.sub[k];
-    schema = "thing";
+    schema = inner;
   }
   return { ph, schema, depth: path.length - 1, k: path[path.length - 1] };
 }
@@ -202,29 +245,32 @@ function tokens(schema, ph, who, slot, path = [], ghosts = false) {
       continue;
     }
     const text = pron(word(schema, ph, p.k).t, who);
-    if (text.includes("{thing}")) {
-      const [before, after] = text.split("{thing}");
+    const inner = nestKey({ t: text });
+    if (inner && ph.sub?.[p.k]) {
+      const [before, after] = text.split(`{${inner}}`);
+      // A word that is only a nested card still gets a handle, so it can be tuned.
       out.push({ word: before.trim(), part: p, path: at });
-      out.push({ group: tokens("thing", ph.sub[p.k], who, slot, at, ghosts), path: at });
+      out.push({ group: tokens(inner, ph.sub[p.k], who, slot, at, ghosts), path: at });
       if (after.trim()) out.push({ text: after.trim() });
     } else out.push({ word: text, part: p, path: at });
   }
-  // Determiner: people and places carry their own; things take a/an.
-  let det = schema === "thing" ? "a" : schema === "who" || schema === "where" ? word(schema, ph, "n").det : "";
+  // Determiner: an article card takes a/an; a head word with a determiner brings its own.
+  let det = SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
   if (det === "a" || det === "an") det = /^[aeiou]/i.test(firstText(out)) ? "an" : "a";
   if (det) out.unshift({ text: det });
   return out;
 }
 function firstText(toks) {
   for (const t of toks) {
-    if (t.ghost) continue;
+    if (t.ghost || t.word === "") continue;
     return t.group ? firstText(t.group) : t.word ?? t.text;
   }
   return "";
 }
-const flat = (toks) => toks.filter((t) => !t.ghost).map((t) => (t.group ? flat(t.group) : t.word ?? t.text)).join(" ");
+const flat = (toks) => toks.filter((t) => !t.ghost && t.word !== "").map((t) => (t.group ? flat(t.group) : t.word ?? t.text)).join(" ");
 
-const person = () => word("who", state.pick.who, "n");
+// Whose pronouns the beats and headline use: the grammar's pronoun card, or "they".
+const person = () => (G.pronouns && state.pick[G.pronouns] ? word(G.pronouns, state.pick[G.pronouns], "n") : THEY);
 const phraseText = (slot) => flat(tokens(slot, state.pick[slot], person(), slot));
 
 function tokHtml(toks, slot, capFirst) {
@@ -237,7 +283,8 @@ function tokHtml(toks, slot, capFirst) {
       return h;
     }
     let s = t.word ?? t.text;
-    if (first) { s = cap(s); first = false; }
+    if (s === "") s = "⋯";
+    else if (first) { s = cap(s); first = false; }
     if (t.text !== undefined) return `<span class="plain">${esc(s)}</span>`;
     const p = t.path.join(".");
     if (state.view) return `<span class="w${viewChanged(`${slot}|${p}`) ? " changed" : ""}">${esc(s)}</span>`;
@@ -249,55 +296,48 @@ function tokHtml(toks, slot, capFirst) {
 const phraseHtml = (slot, capFirst = false) =>
   `<span class="ph top b-${slot}">${tokHtml(tokens(slot, state.pick[slot], person(), slot, [], true), slot, capFirst)}</span>`;
 
+// Everything the headline and beats need: each card's text, the pronouns, and the mood that
+// picks by-mood beat lines.
 function context() {
   const pr = person();
+  const text = {};
+  for (const c of SLOTS) if (state.pick[c.key]) text[c.key] = phraseText(c.key);
   return {
-    who: { ...pr, n: phraseText("who") },
-    what: { t: phraseText("what"), v: phraseV("what", state.pick.what) },
-    feel: { t: phraseText("feel"), v: phraseV("feel", state.pick.feel) },
-    where: phraseText("where"),
-    thing: phraseText("thing"),
+    pr,
+    text,
+    name: G.pronouns ? text[G.pronouns] : "",
+    mood: G.moodCard ? phraseV(G.moodCard, state.pick[G.moodCard]) : 0,
   };
 }
 
-// The one-line bit: "<who> <what>, and <p> <is> <feel>."
-function bitLine(ctx) {
-  return `${cap(ctx.who.n)} ${ctx.what.t}, and ${ctx.who.p} ${ctx.who.is} ${ctx.feel.t}.`;
+// Fill a template (the headline or a beat line): card tokens become the cards ({Thing} starts a
+// sentence with one), pronoun tokens the pronouns. A card at the very start is capitalized.
+function fillWith(tpl, ctx, card) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k, at) => {
+    if (k === "P") return cap(ctx.pr.p);
+    if (SCHEMAS[k]) return card(k, at === 0);
+    const lower = k.charAt(0).toLowerCase() + k.slice(1);
+    if (k !== lower && SCHEMAS[lower]) return card(lower, true);
+    if (k in PRONOUN_KEYS) return ctx.pr[k];
+    return "";
+  });
 }
-function bitHtml(ctx) {
-  return `${phraseHtml("who", true)} ${phraseHtml("what")}, and ${ctx.who.p} ${ctx.who.is} ${phraseHtml("feel")}.`;
-}
+const fill = (tpl, ctx) => fillWith(tpl, ctx, (k, c) => phraseHtml(k, c));
+const fillText = (tpl, ctx) => fillWith(tpl, ctx, (k, c) => (c ? cap(ctx.text[k] || "") : ctx.text[k] || ""));
 
-function fill(tpl, ctx) {
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => {
-    if (k === "P") return cap(ctx.who.p);
-    if (k === "where") return phraseHtml("where");
-    if (k === "thing") return phraseHtml("thing");
-    if (k === "Thing") return phraseHtml("thing", true);
-    if (k in PRONOUN_KEYS) return ctx.who[k];
-    return "";
-  });
-}
-// The same, as plain text (for the picker's list of beat lines).
-function fillText(tpl, ctx) {
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => {
-    if (k === "P") return cap(ctx.who.p);
-    if (k === "where" || k === "thing") return ctx[k];
-    if (k === "Thing") return cap(ctx.thing);
-    if (k in PRONOUN_KEYS) return ctx.who[k];
-    return "";
-  });
-}
+// The headline: the grammar's line ("{who} {what}, and {p} {is} {feel}.").
+const bitLine = (ctx) => fillText(G.line, ctx);
+const bitHtml = (ctx) => fill(G.line, ctx);
 
 // ---------- beats ----------
 const beatGroup = (key) => form().beats[key];
 // A beat's lines for this story: by-mood groups pick the pool for the feeling's mood.
 function beatLines(key, ctx) {
   const g = beatGroup(key);
-  return g.byMood ? g.lines[String(ctx.feel.v)] : g.lines;
+  return g.byMood ? g.lines[String(ctx.mood ?? 0)] : g.lines;
 }
 // A line can be used once the cards it names are in play.
-const lineFits = (line) => ["where", "thing"].every((k) => !new RegExp(`\\{${k}\\}`, "i").test(line.t) || stanza().slots.includes(k));
+const lineFits = (line) => lineCards(line.t, G).every((k) => stanza().slots.includes(k));
 const clashCount = () => pairsInPlay().filter((p) => clashes(p)).length;
 const beatKeys = () => Object.keys(form().beats);
 
@@ -339,9 +379,9 @@ function story(ctx) {
 // Keep only values that make each pair this card belongs to fit or clash as the dial asks.
 // Constraints relax one at a time if nothing satisfies them all.
 function constrain(slot, ok) {
-  if (slot === "what") {
-    // Keep the event itself grounded at low settings.
-    const grounded = ok.filter((v) => phraseTier("what", v) <= state.dial);
+  if (slot === G.rules.grounded) {
+    // Keep this card (story: the event) grounded at low settings.
+    const grounded = ok.filter((v) => phraseTier(slot, v) <= state.dial);
     if (grounded.length) ok = grounded;
   }
   const rules = PAIRS.map((p, i) => ({ p, want: wantClash(i) })).filter((r) => r.p.a === slot || r.p.b === slot);
@@ -378,7 +418,13 @@ function applyPins(slot, cand) {
         b.w[kk] = clone(a.w[kk]);
         if (a.sub && a.sub[kk]) { b.sub = b.sub || {}; b.sub[kk] = clone(a.sub[kk]); } else if (b.sub) delete b.sub[kk];
       }
-      if (i < path.length - 1) { a = a.sub && a.sub[k]; b = b.sub && b.sub[k]; schema = "thing"; }
+      if (i < path.length - 1) {
+        const inner = subSchema(schema, a, k);
+        a = a.sub && a.sub[k];
+        b = b.sub && b.sub[k];
+        schema = inner;
+        if (!a || !b || !inner) break;
+      }
     }
   }
   return cand;
@@ -460,11 +506,12 @@ function useOwn(slot, path, text) {
   if (!t) return;
   const at = locate(slot, state.pick[slot], path);
   const cur = word(at.schema, at.ph, at.k);
-  const e = { s: at.schema, k: at.k, t, tier: cur.tier };
-  if (needsMood(e.s, e.k)) e.v = cur.v;
-  if (needsDet(e.s, e.k)) e.det = DETS[e.s].includes(cur.det) ? cur.det : DETS[e.s][0];
-  if (e.s === "who" && e.k === "n") e.pr = Object.keys(PRON).find((k) => PRON[k].p === cur.p);
-  const err = checkEntry(e);
+  const e = { g: G.id, s: at.schema, k: at.k, t, tier: cur.tier };
+  const dets = detsFor(e.s, e.k, G);
+  if (needsMood(e.s, e.k, G)) e.v = cur.v ?? 0;
+  if (dets) e.det = dets.includes(cur.det) ? cur.det : dets[0];
+  if (needsPronouns(e.s, e.k, G)) e.pr = Object.keys(PRON).find((k) => PRON[k].p === cur.p) || "they";
+  const err = checkEntry(e, G);
   if (err) { toast(err); return; }
   if (addToBank([e])) toast(`Added “${t}” to your word bank.`);
   renderBank();
@@ -485,7 +532,11 @@ function crumbs(slot, path) {
   let schema = slot;
   path.forEach((k, i) => {
     names.push(partOf(schema, k).name);
-    if (i < path.length - 1) { names.push("thing"); schema = "thing"; }
+    if (i < path.length - 1) {
+      const inner = subSchema(schema, locate(slot, state.pick[slot], path.slice(0, i + 1)).ph, k);
+      names.push(SLOTS.find((c) => c.key === inner)?.label.toLowerCase() || inner);
+      schema = inner;
+    }
   });
   return names;
 }
@@ -644,42 +695,47 @@ function step(dir) {
 }
 
 // ---------- cast (characters you keep telling stories about) ----------
-// Each entry: { who: phrase, bits: [lines] }, keyed by the person under any descriptor.
+// Only for grammars with a pronoun card (Story Bits: who). Each entry: { g, who: phrase, bits },
+// keyed by grammar and the head word under any descriptor.
 const CAST_KEY = "story-bits-cast";
-const castKey = (who) => JSON.stringify(who.w.n);
+const castKey = (c) => `${c.g || "story-bits"}|${JSON.stringify(c.who.w.n)}`;
 function loadCast() {
   try {
     const raw = JSON.parse(localStorage.getItem(CAST_KEY)) || [];
-    // Older entries stored a bare index into the people list.
+    // Older entries stored a bare index into the people list, and had no grammar.
     return raw.map((c) => (typeof c.who === "number" ? { ...c, who: { w: { n: c.who } } } : c))
-      .filter((c) => validPhrase("who", c.who, 0) && Array.isArray(c.bits));
+      .map((c) => ({ ...c, g: c.g || "story-bits" }))
+      .filter((c) => c.who && typeof c.who.w === "object" && Array.isArray(c.bits));
   } catch { return []; }
 }
 function saveCast() {
   try { localStorage.setItem(CAST_KEY, JSON.stringify(cast)); } catch {}
 }
 let cast = [];
+const castHere = () => cast.map((c, i) => ({ c, i })).filter(({ c }) => c.g === G.id && G.pronouns && validPhrase(G.pronouns, c.who, 0));
 
 function keepBit() {
+  if (!G.pronouns) return;
   const ctx = context();
   const line = bitLine(ctx);
-  const key = castKey(state.pick.who);
-  let c = cast.find((x) => castKey(x.who) === key);
-  if (!c) { c = { who: null, bits: [] }; cast.unshift(c); }
-  c.who = clone(state.pick.who);
+  const entry = { g: G.id, who: clone(state.pick[G.pronouns]), bits: [] };
+  let c = cast.find((x) => castKey(x) === castKey(entry));
+  if (!c) { c = entry; cast.unshift(c); }
+  c.who = entry.who;
   if (!c.bits.includes(line)) c.bits.unshift(line);
   saveCast();
   renderCast();
-  toast(`Kept. ${cap(ctx.who.n)} now has ${c.bits.length} ${c.bits.length === 1 ? "story" : "stories"}.`);
+  toast(`Kept. ${cap(ctx.name)} now has ${c.bits.length} ${c.bits.length === 1 ? "story" : "stories"}.`);
 }
 function tellAnother(i) {
   const c = cast[i];
-  if (!c) return;
-  state.pick.who = clone(c.who);
+  if (!c || c.g !== G.id || !G.pronouns) return;
+  const key = G.pronouns;
+  state.pick[key] = clone(c.who);
   // Pin the character's words; shuffle everything else.
-  state.pins = state.pins.filter((p) => !p.startsWith("who|")).concat(Object.keys(c.who.w).map((k) => `who|${k}`));
+  state.pins = state.pins.filter((p) => !p.startsWith(key + "|")).concat(Object.keys(c.who.w).map((k) => `${key}|${k}`));
   state.sel = null;
-  reroll(["what", "feel", "where", "thing"]);
+  reroll(SLOTS.map((x) => x.key).filter((k) => k !== key));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -687,7 +743,7 @@ function tellAnother(i) {
 // A story link carries the whole state, your own words included, as base64url JSON.
 function validValue(schema, part, val, depth) {
   if (typeof val === "number") return Number.isInteger(val) && val >= 0 && val < part.pool.length;
-  return !!val && typeof val === "object" && typeof val.c === "string" && !checkEntry(asEntry(schema, part.k, val));
+  return !!val && typeof val === "object" && typeof val.c === "string" && !checkEntry(asEntry(schema, part.k, val), G);
 }
 function validPhrase(schema, ph, depth) {
   if (!ph || typeof ph.w !== "object") return false;
@@ -696,26 +752,50 @@ function validPhrase(schema, ph, depth) {
   for (const p of parts) {
     if (!(p.k in ph.w)) { if (!p.opt) return false; continue; }
     if (!validValue(schema, p, ph.w[p.k], depth)) return false;
-    if (nests(entryOf(schema, p.k, ph.w[p.k])) && (depth >= MAX_DEPTH || !validPhrase("thing", ph.sub?.[p.k], depth + 1))) return false;
+    const inner = nestKey(entryOf(schema, p.k, ph.w[p.k]));
+    if (inner && (depth >= MAX_DEPTH || !validPhrase(inner, ph.sub?.[p.k], depth + 1))) return false;
   }
   return parts.every((p) => !(p.k in ph.w) || allowed(schema, ph, p));
 }
-// Everything that makes a story what it is. v2 adds the form and hand-tuned beats.
+// Everything that makes a piece what it is. v2 added the form and hand-tuned beats; v3 adds the
+// grammar (by id, and carried inline when it isn't built in, so the link works anywhere).
 function snapshot() {
-  return { v: 2, f: state.form, p: state.pick, d: state.dial, s: state.seed, l: state.len, b: state.beats, pn: state.pins };
+  return {
+    v: 3, g: G.id, ...(!GRAMMARS[G.id] && { gx: G }),
+    f: state.form, p: state.pick, d: state.dial, s: state.seed, l: state.len, b: state.beats, pn: state.pins,
+  };
 }
-// Check a snapshot from a link and normalize it, or return null. v1 links (no form, no beats) still load.
+// The grammar a snapshot names: built in, in your library, or carried inline (checked).
+function resolveGrammar(id = "story-bits", inline) {
+  if (GRAMMARS[id]) return GRAMMARS[id];
+  if (library[id]) return library[id];
+  if (inline && inline.id === id && !checkGrammar(inline)) return inline;
+  return null;
+}
+// Check a snapshot from a link and normalize it, or return null. v1/v2 links (Story Bits, no
+// grammar field) still load.
 function parseSnapshot(x) {
-  const { p, d, s, l, pn = [], f = "bit", b = {} } = x || {};
-  if (!FORMS[f] || ![0, 1, 2].includes(d) || !Number.isInteger(s)) return null;
-  if (!Number.isInteger(l) || l < 1 || l > FORMS[f].stanzas.length) return null;
-  if (!p || !SLOTS.every((x) => validPhrase(x.key, p[x.key], 0))) return null;
-  const beats = b && typeof b === "object" ? Object.fromEntries(Object.entries(b).filter(([k, i]) => FORMS[f].beats[k] && Number.isInteger(i) && i >= 0)) : {};
-  return { v: 2, f, p, d, s: s || 1, l, b: beats, pn: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [] };
+  const { p, d, s, l, pn = [], f, b = {}, g: gid = "story-bits", gx } = x || {};
+  const gram = resolveGrammar(gid, gx);
+  if (!gram) return null;
+  const fk = f ?? Object.keys(gram.forms)[0];
+  const fm = gram.forms[fk];
+  if (!fm || ![0, 1, 2].includes(d) || !Number.isInteger(s)) return null;
+  if (!Number.isInteger(l) || l < 1 || l > fm.stanzas.length) return null;
+  if (!p || !withGrammar(gram, () => gram.cards.every((c) => validPhrase(c.key, p[c.key], 0)))) return null;
+  const beats = b && typeof b === "object" ? Object.fromEntries(Object.entries(b).filter(([k, i]) => fm.beats[k] && Number.isInteger(i) && i >= 0)) : {};
+  const out = {
+    v: 3, g: gram.id, ...(!GRAMMARS[gram.id] && { gx: gram }),
+    f: fk, p, d, s: s || 1, l, b: beats, pn: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [],
+  };
+  // The resolved grammar rides along, but never into JSON (links carry gx instead).
+  Object.defineProperty(out, "gram", { value: gram, enumerable: false });
+  return out;
 }
-// Put a (parsed) snapshot into state.
+// Put a (parsed) snapshot into state, switching grammar if it names another.
 function applySnapshot(x) {
-  Object.assign(state, { pick: clone(x.p), dial: x.d, seed: x.s, len: x.l, form: x.f, beats: { ...x.b }, pins: [...x.pn] });
+  if (x.gram && x.gram !== G) useGrammar(x.gram);
+  Object.assign(state, { grammar: G.id, pick: clone(x.p), dial: x.d, seed: x.s, len: x.l, form: x.f, beats: { ...x.b }, pins: [...x.pn] });
 }
 function loadSnapshot(x) {
   const snap = parseSnapshot(x);
@@ -765,9 +845,16 @@ async function loadPacks() {
     for (const f of files) {
       if (!/^[\w-]+\.json$/.test(f)) continue;
       const pack = await (await fetch(`packs/${f}`)).json();
-      for (const e of pack.words || []) if (!checkEntry(e) && !builtinHas(e)) partOf(e.s, e.k).pool.push(poolEntry(e));
-      // Forms join by key; a key already taken is skipped, so links to a form never change meaning.
-      for (const [k, f] of Object.entries(pack.forms || {})) if (!FORMS[k] && /^[a-z][a-z0-9-]{0,23}$/.test(k) && !checkForm(f)) FORMS[k] = { ...f, pack: true };
+      // Whole grammars first, so the words and forms below can belong to them. An id already
+      // taken is skipped, so links to a grammar never change meaning.
+      for (const [id, gram] of Object.entries(pack.grammars || {})) if (!GRAMMARS[id] && gram?.id === id && !checkGrammar(gram)) GRAMMARS[id] = { ...gram, shared: true };
+      for (const e of pack.words || []) {
+        const gram = GRAMMARS[e.g || "story-bits"];
+        if (gram && !checkEntry(e, gram) && !builtinHas(e, gram)) gram.schemas[e.s].parts.find((p) => p.k === e.k).pool.push(poolEntry(e, gram));
+      }
+      // Forms join a grammar by key (pack.grammar, default Story Bits); a taken key is skipped.
+      const fg = GRAMMARS[pack.grammar || "story-bits"];
+      if (fg) for (const [k, f] of Object.entries(pack.forms || {})) if (!fg.forms[k] && /^[a-z][a-z0-9-]{0,23}$/.test(k) && !checkForm(f, fg)) fg.forms[k] = { ...f, pack: true };
     }
   } catch {}
 }
@@ -816,16 +903,18 @@ function diffPhrase(schema, a, b, path = [], out = []) {
   for (const k of new Set([...Object.keys(a.w), ...Object.keys(b.w)])) {
     const at = [...path, k];
     if (!same(a.w[k], b.w[k])) out.push(at.join("."));
-    else if (a.sub?.[k] && b.sub?.[k]) diffPhrase("thing", a.sub[k], b.sub[k], at, out);
+    else if (a.sub?.[k] && b.sub?.[k]) diffPhrase(subSchema(schema, a, k), a.sub[k], b.sub[k], at, out);
   }
   return out;
 }
 // Every change from the start: "slot|path" for words, "beat|key" for beats. One change, one move.
 function changes(start, snap) {
-  const out = [];
-  for (const sl of SLOTS) for (const p of diffPhrase(sl.key, start.p[sl.key], snap.p[sl.key])) out.push(`${sl.key}|${p}`);
-  for (const k of Object.keys(start.b)) if (snap.b[k] !== start.b[k]) out.push(`beat|${k}`);
-  return out;
+  return withGrammar(start.gram || G, () => {
+    const out = [];
+    for (const sl of SLOTS) for (const p of diffPhrase(sl.key, start.p[sl.key], snap.p[sl.key])) out.push(`${sl.key}|${p}`);
+    for (const k of Object.keys(start.b)) if (snap.b[k] !== start.b[k]) out.push(`beat|${k}`);
+    return out;
+  });
 }
 const movesUsed = () => changes(state.game.c.s, fixedSnapshot()).length;
 
@@ -926,7 +1015,8 @@ function linksIn(text) {
 
 // Render any snapshot as static text, with changed words and beats marked.
 function staticHtml(snap, changed) {
-  const saved = { pick: state.pick, dial: state.dial, seed: state.seed, len: state.len, form: state.form, beats: state.beats, pins: state.pins, sel: state.sel };
+  const saved = { grammar: state.grammar, pick: state.pick, dial: state.dial, seed: state.seed, len: state.len, form: state.form, beats: state.beats, pins: state.pins, sel: state.sel };
+  const savedG = G;
   applySnapshot(snap);
   state.pins = [];
   state.sel = null;
@@ -935,6 +1025,7 @@ function staticHtml(snap, changed) {
     const ctx = context();
     return `<p class="bit">${bitHtml(ctx)}</p><div class="story">${story(ctx).map((p) => `<p>${p}</p>`).join("")}</div>`;
   } finally {
+    useGrammar(savedG);
     Object.assign(state, saved);
     state.view = null;
   }
@@ -1140,9 +1231,13 @@ function render() {
   $("#bit").innerHTML = bitHtml(ctx);
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
 
+  $("#grammar-pick").innerHTML = allGrammars().map((g) =>
+    `<option value="${esc(g.id)}" ${g.id === G.id ? "selected" : ""}>${esc(g.name)}${library[g.id] ? " (yours)" : ""}</option>`).join("");
+  $("#grammar-desc").textContent = [G.description, ...(G.rules.constraints || []).map(describeConstraint).filter(Boolean).map((x) => cap(x) + ".")].filter(Boolean).join(" ");
+  document.querySelectorAll(".dial button[data-dial]").forEach((b) => { b.textContent = G.rules.dialLabels[+b.dataset.dial]; });
   $("#forms").innerHTML = Object.entries(FORMS).map(([k, f]) =>
     `<button data-form="${k}" aria-pressed="${k === state.form}">${esc(f.name)}</button>`).join("");
-  document.querySelectorAll(".dial button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.dial === state.dial)));
+  document.querySelectorAll(".dial button[data-dial]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.dial === state.dial)));
   $("#dial-note").textContent = DIAL_NOTES[state.dial];
 
   $("#len-n").textContent = state.len;
@@ -1159,6 +1254,24 @@ function render() {
   renderPicker();
 }
 
+// Switch to another grammar: a fresh piece in its first form.
+function switchGrammar(id) {
+  const g = resolveGrammar(id);
+  if (!g || g === G) return;
+  if (state.game) leaveGame();
+  useGrammar(g);
+  Object.assign(state, { grammar: g.id, form: Object.keys(g.forms)[0], beats: {}, pins: [], sel: null, pick: {} });
+  state.len = Math.min(Math.max(state.len, 2), maxLen());
+  for (const c of SLOTS) state.pick[c.key] = randomPhrase(c.key);
+  state.seed = 1 + rand(1e9);
+  for (const c of SLOTS.slice(1)) pickFrom(c.key, Array.from({ length: 300 }, () => randomPhrase(c.key)));
+  renderBankForm();
+  renderBank();
+  renderCast();
+  render();
+}
+const allGrammars = () => [...Object.values(GRAMMARS), ...Object.values(library)];
+
 function setForm(key) {
   if (!FORMS[key] || key === state.form) return;
   state.form = key;
@@ -1169,9 +1282,12 @@ function setForm(key) {
   render();
 }
 
-// Today's bit: the same story for everyone today (UTC), as a 3-move challenge. Generated from
-// the date alone: no word bank, forms rotate by day.
+// Today's bit: the same Story Bits piece for everyone today (UTC), as a 3-move challenge.
+// Generated from the date alone: no word bank, forms rotate by day.
 function dailyChallenge(date = new Date()) {
+  return withGrammar(GRAMMARS["story-bits"], () => dailyIn(date));
+}
+function dailyIn(date) {
   const day = date.toISOString().slice(0, 10);
   const saved = { rng, pick: state.pick, dial: state.dial, len: state.len, form: state.form, seed: state.seed, beats: state.beats, pins: state.pins };
   rng = seeded(parseInt(hashStr(`story-bits ${day}`), 36));
@@ -1200,15 +1316,20 @@ function setLen(n) {
 
 function renderCast() {
   const el = $("#cast");
-  if (!cast.length) {
+  // The cast belongs to grammars with a pronoun card (characters); others don't have one.
+  $(".cast-wrap").hidden = !G.pronouns;
+  $("#keep").hidden = !G.pronouns;
+  if (!G.pronouns) return;
+  const here = castHere();
+  if (!here.length) {
     el.innerHTML = `<p class="empty">Nobody yet. Keep a bit and its character joins the cast. Tell more stories about them and they start to feel like someone you know.</p>`;
     return;
   }
-  el.innerHTML = cast.map((c, i) => {
-    const pr = word("who", c.who, "n");
+  el.innerHTML = here.map(({ c, i }) => {
+    const pr = word(G.pronouns, c.who, "n");
     return `
     <article class="person">
-      <header><h3>${esc(cap(flat(tokens("who", c.who, pr, "who"))))}</h3>
+      <header><h3>${esc(cap(flat(tokens(G.pronouns, c.who, pr, G.pronouns))))}</h3>
         <span class="count">${c.bits.length} ${c.bits.length === 1 ? "story" : "stories"}</span></header>
       <ul>${c.bits.slice(0, 6).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
       <div class="person-actions">
@@ -1222,56 +1343,62 @@ function renderCast() {
 // ---------- word bank form ----------
 function renderBankForm() {
   const sel = $("#bf-slot");
-  sel.innerHTML = SLOTS.map((s) => `<optgroup label="${s.label}">${SCHEMAS[s.key].parts.map((p) =>
-    `<option value="${s.key}.${p.k}">${s.label}: ${p.name}</option>`).join("")}</optgroup>`).join("");
-  sel.value = "thing.q";
+  const keep = sel.value;
+  sel.innerHTML = SLOTS.map((s) => `<optgroup label="${esc(s.label)}">${SCHEMAS[s.key].parts.map((p) =>
+    `<option value="${s.key}.${p.k}">${esc(s.label)}: ${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
+  // Default to a describing slot if the grammar has one, else the first slot.
+  const fallback = SLOTS.flatMap((s) => SCHEMAS[s.key].parts.filter((p) => p.k === "q").map((p) => `${s.key}.${p.k}`))[0];
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : fallback || sel.options[0].value;
+  $("#bank-h").textContent = `Word bank · ${G.name}`;
   updateBankForm();
 }
 function formEntry() {
   const [s, k] = $("#bf-slot").value.split(".");
-  const e = { s, k, t: cleanWord($("#bf-text").value), tier: +document.querySelector('[name="bf-tier"]:checked').value };
-  if (needsMood(s, k)) e.v = +document.querySelector('[name="bf-mood"]:checked').value;
-  if (needsDet(s, k)) e.det = $("#bf-det").value;
-  if (s === "who" && k === "n") e.pr = $("#bf-pr").value;
+  const e = { g: G.id, s, k, t: cleanWord($("#bf-text").value), tier: +document.querySelector('[name="bf-tier"]:checked').value };
+  if (needsMood(s, k, G)) e.v = +document.querySelector('[name="bf-mood"]:checked').value;
+  if (detsFor(s, k, G)) e.det = $("#bf-det").value;
+  if (needsPronouns(s, k, G)) e.pr = $("#bf-pr").value;
   return e;
 }
 function updateBankForm() {
   const [s, k] = $("#bf-slot").value.split(".");
-  $("#bf-mood-row").hidden = !needsMood(s, k);
-  $("#bf-det-row").hidden = !needsDet(s, k);
-  $("#bf-pr-row").hidden = !(s === "who" && k === "n");
-  if (needsDet(s, k)) {
+  const part = partOf(s, k);
+  const dets = detsFor(s, k, G);
+  $("#bf-mood-row").hidden = !part.mood;
+  $("#bf-det-row").hidden = !dets;
+  $("#bf-pr-row").hidden = !part.pronouns;
+  if (dets) {
     const d = $("#bf-det");
     const keep = d.value;
-    d.innerHTML = DETS[s].map((x) => `<option>${x}</option>`).join("");
-    if (DETS[s].includes(keep)) d.value = keep;
+    d.innerHTML = dets.map((x) => `<option>${esc(x)}</option>`).join("");
+    if (dets.includes(keep)) d.value = keep;
   }
-  const info = SLOT_INFO[`${s}.${k}`];
   const e = formEntry();
   let det = e.det || "";
   const shown = e.t ? `<b>${esc(e.t)}</b>` : `<b class="blank">___</b>`;
   if (det === "a" && e.t) det = /^[aeiou]/i.test(e.t) ? "an" : "a";
-  const frame = esc(info.frame).replace("{det}", det).replace("___", shown);
-  $("#bf-frame").innerHTML = frame;
-  $("#bf-hint").textContent = info.hint;
-  const err = e.t ? checkEntry(e) || (builtinHas(e) || bank.some((b) => sameWord(b, e)) ? "Already in the bank." : "") : "";
+  $("#bf-frame").innerHTML = esc(part.frame || "___").replace("{det}", esc(det)).replace("___", shown);
+  const rules = (G.rules.constraints || []).map(describeConstraint).filter(Boolean);
+  $("#bf-hint").textContent = [part.hint || `A word for “${part.name}”.`, rules.length ? `This grammar: ${rules.join("; ")}.` : ""].filter(Boolean).join(" ");
+  const err = grammarClosed(G) ? "This grammar is closed: it only uses its own words. Fork it to add some." : e.t ? checkEntry(e, G) || (builtinHas(e) || bank.some((b) => sameWord(b, e)) ? "Already in the bank." : "") : "";
   $("#bf-error").textContent = err;
   $("#bf-add").disabled = !e.t || !!err;
 }
 function renderBank() {
   const el = $("#bank-list");
-  if (!bank.length) {
-    el.innerHTML = `<p class="empty">No words of your own yet. Add one above, or type your own in any word's picker.</p>`;
+  const mineAll = bank.map((e, i) => ({ e, i })).filter((x) => gOf(x.e) === G.id && partIn(G, x.e.s, x.e.k));
+  if (!mineAll.length) {
+    el.innerHTML = `<p class="empty">No words of your own for ${esc(G.name)} yet. Add one above, or type your own in any word's picker.</p>`;
   } else {
     el.innerHTML = SLOTS.map((s) => {
-      const mine = bank.map((e, i) => ({ e, i })).filter((x) => x.e.s === s.key);
+      const mine = mineAll.filter((x) => x.e.s === s.key);
       if (!mine.length) return "";
-      return `<div class="bank-group"><h4 class="b-${s.key}-text">${s.label}</h4>${mine.map((x) =>
+      return `<div class="bank-group"><h4>${esc(s.label)}</h4>${mine.map((x) =>
         `<span class="bank-word" title="${esc(partOf(x.e.s, x.e.k).name)} · ${TIER_NAMES[x.e.tier]}">${esc(x.e.t)}<span class="bw-slot">${esc(partOf(x.e.s, x.e.k).name)}</span><button class="bw-x" data-unbank="${x.i}" aria-label="Remove ${esc(x.e.t)} from your bank">✕</button></span>`).join("")}</div>`;
     }).join("");
   }
-  $("#bank-share").disabled = $("#bank-suggest").disabled = !bank.length;
-  $("#bank-count").textContent = bank.length ? `${bank.length} word${bank.length === 1 ? "" : "s"}` : "";
+  $("#bank-share").disabled = $("#bank-suggest").disabled = !mineAll.length;
+  $("#bank-count").textContent = mineAll.length ? `${mineAll.length} word${mineAll.length === 1 ? "" : "s"}` : "";
 }
 
 let toastTimer;
@@ -1418,7 +1545,10 @@ document.addEventListener("input", (e) => {
 });
 const inBankForm = (e) => e.target instanceof Element && e.target.closest("#bank-form");
 document.addEventListener("input", (e) => { if (inBankForm(e)) updateBankForm(); });
-document.addEventListener("change", (e) => { if (inBankForm(e)) updateBankForm(); });
+document.addEventListener("change", (e) => {
+  if (inBankForm(e)) updateBankForm();
+  else if (e.target instanceof Element && e.target.id === "grammar-pick") switchGrammar(e.target.value);
+});
 
 // Hovering a word outlines the phrase it belongs to, so it's clear what a clause attaches to.
 document.addEventListener("mouseover", (e) => {

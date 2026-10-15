@@ -1,21 +1,26 @@
-// Every card is a phrase built from words, and every word is tunable on its own.
-// Each word carries a tier (0 = plausible, 1 = odd, 2 = absurd); a phrase's register is
-// its strangest word. Event and feeling cores also carry a valence (+1 good, 0 mixed,
-// -1 bad). The incongruity dial works by making pairs of cards fit or clash on these.
+// Built-in grammars. A grammar is one document: cards, their word slots and pools, a headline
+// line, forms (templates of beats), and rules (what the dial clashes, whether forms must land,
+// word constraints). See docs/design.md. The engine in app.js knows nothing about any one grammar.
 //
-// Phrases nest: a word whose text contains {thing} holds a whole thing phrase of its own,
-// which is itself tunable word by word, and may nest again (up to MAX_DEPTH).
+// This file holds "Story Bits", the humor grammar, and the poetry grammar(s) below it.
+//
+// Story Bits: every card is a phrase built from words, each tunable on its own. Each word carries
+// a tier (0 = plausible, 1 = odd, 2 = absurd); a phrase's register is its strangest word. Event and
+// feeling cores also carry a mood (+1 good, 0 mixed, -1 bad). The dial makes pairs of cards fit or
+// clash on these, and every form lands.
+//
+// Phrases nest: a word whose text names a card ({thing}) holds a whole phrase of that card,
+// tunable the same way, up to the grammar's maxDepth.
 // Pronoun tokens in word text: {p} {o} {pos} {is} {has} {was} {s}.
-
-const MAX_DEPTH = 2;
 
 const HE = { p: "he", o: "him", pos: "his", is: "is", has: "has", was: "was", s: "s" };
 const SHE = { p: "she", o: "her", pos: "her", is: "is", has: "has", was: "was", s: "s" };
 const THEY = { p: "they", o: "them", pos: "their", is: "are", has: "have", was: "were", s: "" };
 
-// Parts are listed in reading order. opt: may be absent. needs: only present with that part.
-// grow: the order "+" adds optional parts (and "−" drops them in reverse).
-const SCHEMAS = {
+// Parts are listed in reading order. opt: may be absent. needs: only present with that part
+// ("adj": only if the head word takes one). grow: the order "+" adds optional parts.
+// Every schema's head word is part "n". More slot flags are set in STORY_SLOTS below.
+const STORY_SCHEMAS = {
   who: {
     parts: [
       { k: "d", name: "descriptor", opt: true, pool: [
@@ -252,7 +257,7 @@ const SCHEMAS = {
 // role "landing": the beat that resolves the story. Every form ends on one.
 const B = (tier, t) => ({ tier, t });
 
-const FORMS = {
+const STORY_FORMS = {
   bit: {
     name: "The bit",
     stanzas: [
@@ -498,3 +503,73 @@ const FORMS = {
     },
   },
 };
+
+// What each slot is, for the word bank's preview frame and hint, plus the flags the engine reads
+// instead of card names: mood (entries carry v), det (head words carry a determiner), pronouns
+// (head words supply he/she/they), trailing (a clause that follows the head).
+const STORY_SLOTS = {
+  "who.d": { frame: "your ___ uncle", hint: "Describes a person. An adjective or short phrase." },
+  "who.n": { frame: "{det} ___", hint: "A person, the way you'd refer to them: “cousin Dale”, “mail carrier”.", pronouns: true, det: ["your", "the"] },
+  "what.a": { frame: "your uncle ___ lost his dog", hint: "An adverb that sits before the event." },
+  "what.n": { frame: "your uncle ___", hint: "What happened, starting with a past-tense verb: “got…”, “lost…”.", mood: true },
+  "what.t": { frame: "your uncle lost his dog ___", hint: "When, where or how. A phrase that trails the event.", trailing: true },
+  "feel.i": { frame: "and he is ___ furious", hint: "How much. An adverb." },
+  "feel.n": { frame: "and he is ___", hint: "How they feel, read after “is”: “thrilled”, “pretending it's fine”.", mood: true },
+  "feel.t": { frame: "and he is furious ___", hint: "A trailing twist: “but won't admit it”.", trailing: true },
+  "where.i": { frame: "a ___ haunted laundromat", hint: "An adverb for the place's quality." },
+  "where.q": { frame: "a ___ laundromat", hint: "Describes a place. An adjective." },
+  "where.n": { frame: "{det} ___", hint: "A place.", det: ["the", "a", "an", "a cousin's"] },
+  "where.c": { frame: "a laundromat ___", hint: "Trails the place: “two towns over”, “that was also a bank”.", trailing: true },
+  "thing.i": { frame: "a ___ wet dog", hint: "An adverb for the thing's quality." },
+  "thing.q": { frame: "a ___ dog", hint: "Describes a thing. An adjective." },
+  "thing.n": { frame: "a ___", hint: "A thing. A singular noun." },
+  "thing.c": { frame: "a dog ___", hint: "Trails the thing: “from 1994”, “that has a lawyer”.", trailing: true },
+};
+for (const [key, info] of Object.entries(STORY_SLOTS)) {
+  const [s, k] = key.split(".");
+  Object.assign(STORY_SCHEMAS[s].parts.find((p) => p.k === k), info);
+}
+// noun: a clause on this card's words can hold a nested phrase, and that phrase may not take a
+// clause of its own (so every trailing clause has one owner). article: starts with a/an.
+Object.assign(STORY_SCHEMAS.where, { noun: true });
+Object.assign(STORY_SCHEMAS.thing, { noun: true, article: true });
+
+const STORY_GRAMMAR = {
+  id: "story-bits",
+  name: "Story Bits",
+  description: "Something happened to someone, and they feel some way about it. The dial makes pairs of cards clash, and every telling lands somewhere safe enough to laugh.",
+  maxDepth: 2,
+  cards: [
+    { key: "who", label: "Who", hint: "the character" },
+    { key: "what", label: "What happened", hint: "the event" },
+    { key: "feel", label: "How they feel", hint: "the feeling" },
+    { key: "where", label: "Where", hint: "the place" },
+    { key: "thing", label: "Thing", hint: "the object" },
+  ],
+  // Whose pronouns the beats use ({p}, {is}...), and whose mood picks by-mood beat lines.
+  pronouns: "who",
+  moodCard: "feel",
+  line: "{who} {what}, and {p} {is} {feel}.",
+  schemas: STORY_SCHEMAS,
+  forms: STORY_FORMS,
+  rules: {
+    landing: true,
+    dialLabels: ["Plausible", "Odd", "Absurd"],
+    dialNotes: [
+      "No pair clashes. A thing your mom would tell you on the phone.",
+      "One pair clashes: the feeling doesn't fit what happened.",
+      "Every pair in play clashes. The world gets strange, then lands safely.",
+    ],
+    // Incongruity is counted in pairs, each fitting or clashing on mood (good/mixed/bad) or
+    // register (plausible/odd/absurd). Dial: none clash, the first clashes, all clash.
+    pairs: [
+      { a: "what", b: "feel", on: "mood", label: "event ↔ feeling" },
+      { a: "where", b: "what", on: "register", label: "place ↔ event" },
+      { a: "thing", b: "where", on: "register", label: "thing ↔ place" },
+    ],
+    // The event itself stays grounded at low settings: its register never exceeds the dial.
+    grounded: "what",
+  },
+};
+
+const GRAMMARS = { [STORY_GRAMMAR.id]: STORY_GRAMMAR };
