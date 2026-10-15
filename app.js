@@ -788,6 +788,8 @@ function hideFirstHint(forGood) {
   if (!hintOn && !forGood) return;
   hintOn = false;
   $("#first-hint").hidden = true;
+  // The pulsing word goes with the bubble.
+  document.querySelectorAll(".word.pulse").forEach((x) => x.classList.remove("pulse"));
   if (forGood) try { localStorage.setItem(HINT_KEY, "1"); } catch {}
 }
 function placeFirstHint() {
