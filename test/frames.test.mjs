@@ -154,3 +154,18 @@ test("every built-in grammar checks clean, and retired words aren't offered", ()
   assert.equal(r.weather, "weather");
   assert.match(r.needsTypo, /needs a slot/);
 });
+
+test("retagging a word keeps the flags its card's slots read (about, adj) and mass", () => {
+  const { json } = engine();
+  const r = json(`(() => {
+    const g = GRAMMARS["story-bits"];
+    const i = g.schemas.feel.parts.find((p) => p.k === "n").pool.findIndex((w) => w.t === "furious");
+    const out = grammarOps.setWordTags(g, "feel", "n", i, { tier: 1 }, { library: {}, rand: () => 0.5 });
+    const w = out.grammar.schemas.feel.parts.find((p) => p.k === "n").pool[i];
+    const p = GRAMMARS["small-poems"];
+    const j = p.schemas.image.parts.find((x) => x.k === "n").pool.findIndex((w) => w.t === "weather");
+    const out2 = grammarOps.setWordTags(p, "image", "n", j, { tier: 0 }, { library: {}, rand: () => 0.5 });
+    return { about: w.about, adj: w.adj, tier: w.tier, mass: out2.grammar.schemas.image.parts.find((x) => x.k === "n").pool[j].mass };
+  })()`);
+  assert.deepEqual(r, { about: true, adj: true, tier: 1, mass: true });
+});

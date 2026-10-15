@@ -115,6 +115,9 @@
       if (why) throw new Error(why);
       const rebuilt = poolEntry(next, d);
       if (free?.length) rebuilt.tags = free;
+      // Flags a slot reads off the head word (needs: "adj", "about") and mass nouns stay as they were.
+      const kept = ["mass", ...part.k === "n" ? d.schemas[card].parts.map((p) => p.needs).filter((f) => f && !d.schemas[card].parts.some((p) => p.k === f)) : []];
+      for (const f of kept) if (w[f] !== undefined) rebuilt[f] = w[f];
       for (const key of Object.keys(w)) if (!(key in rebuilt)) delete w[key];
       Object.assign(w, rebuilt);
       const bits = ["tier", "v", "det", "pr", "tags"].filter((k) => tags && k in tags).map((k) => (k === "tier" ? TIER_NAMES[next.tier] : k === "v" ? `${MOOD_NAMES[next.v]} mood` : k === "det" ? `starts with ${next.det}` : k === "pr" ? `pronouns ${next.pr}` : free.length ? `tags ${free.join(", ")}` : "no tags"));

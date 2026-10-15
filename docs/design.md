@@ -115,7 +115,9 @@ have parts that move on their own:
   {who}*), with the old twists (*but won't admit it*) still in it. Pronoun tokens keep agreement:
   *and they are quietly furious about a dog and have started a podcast*.
 - `needs` was a slot key or `"adj"`; it can now name any flag the head word carries
-  (checkGrammar requires some head word to carry it, so a typo still fails).
+  (checkGrammar requires some head word to carry it, so a typo still fails). grammar-ops'
+  `setWordTags` keeps those flags (and `mass`) when it rebuilds a word; a word you add yourself
+  doesn't carry `about`, so it takes no *about*.
 
 The old frozen events and the mixed feeling list stay where they were (append-only: links pin
 indices) and the frames sit after them in the same pools, so old links, the shelf and drafts read
