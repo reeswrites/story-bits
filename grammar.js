@@ -47,9 +47,32 @@ function syllables(word) {
   const groups = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, "").replace(/^y/, "").match(/[aeiouy]{1,2}/g);
   return Math.max(1, groups ? groups.length : 0);
 }
+// Constraints that filter words (closed only limits the bank). Most grammars have none, so the
+// checks below return at once; constrained ones remember each verdict, since the engine asks
+// about every word in a slot each time a word is set.
+const constraintKeys = new WeakMap(); // a grammar's constraints array -> { cs, key }
+function wordConstraints(g) {
+  const all = g.rules?.constraints;
+  if (!all || !all.length) return { cs: [], key: "" };
+  let hit = constraintKeys.get(all);
+  if (!hit) { const cs = all.filter((c) => c.type !== "closed"); hit = { cs, key: JSON.stringify(cs) }; constraintKeys.set(all, hit); }
+  return hit;
+}
+const verdicts = new Map(); // "<constraints json>\n<text>" -> boolean
 function wordAllowed(text, g) {
+  const { cs, key: ck } = wordConstraints(g);
+  if (!cs.length) return true;
+  const key = ck + "\n" + text;
+  const known = verdicts.get(key);
+  if (known !== undefined) return known;
+  const ok = checkWord(text, cs);
+  if (verdicts.size > 20000) verdicts.clear();
+  verdicts.set(key, ok);
+  return ok;
+}
+function checkWord(text, cs) {
   const t = bareText(text).toLowerCase();
-  for (const c of g.rules?.constraints || []) {
+  for (const c of cs) {
     if (c.type === "lipogram" && [...String(c.letters).toLowerCase()].some((ch) => t.includes(ch))) return false;
     if (c.type === "startsWith" && t && !t.split(" ").every((w) => w.startsWith(String(c.letter).toLowerCase()))) return false;
     if (c.type === "maxSyllables" && t.split(" ").some((w) => syllables(w) > c.n)) return false;
@@ -58,6 +81,7 @@ function wordAllowed(text, g) {
 }
 // A lipogram covers everything the reader sees, not just words: determiners and beat lines too.
 function lipogramOk(text, g) {
+  if (!(g.rules?.constraints || []).some((c) => c.type === "lipogram")) return true;
   const t = bareText(text).toLowerCase();
   return !(g.rules?.constraints || []).some((c) => c.type === "lipogram" && [...String(c.letters).toLowerCase()].some((ch) => t.includes(ch)));
 }

@@ -494,6 +494,24 @@ function constrain(slot, ok) {
   }
   return ok;
 }
+// Shuffles draw candidates one at a time and take the first that fits everything the dial asks
+// (grounded, every pair, and not the phrase already there). Each draw is independent, so the first
+// fit is as random as choosing among all fits, but a shuffle stops after a handful of draws instead
+// of always building `max`. Only when nothing fits does it fall back to pickFrom's relaxing.
+function pickLazy(slot, draw, max = 300) {
+  const rules = PAIRS.map((p, i) => ({ p, want: wantClash(i) })).filter((r) => r.p.a === slot || r.p.b === slot);
+  const fits = (v) =>
+    (slot !== G.rules.grounded || phraseTier(slot, v) <= state.dial) &&
+    rules.every((r) => clashes(r.p, { ...state.pick, [slot]: v }) === r.want) &&
+    !same(v, state.pick[slot]);
+  const seen = [];
+  for (let i = 0; i < max; i++) {
+    const v = draw();
+    if (fits(v)) { state.pick[slot] = v; return; }
+    seen.push(v);
+  }
+  pickFrom(slot, seen);
+}
 function pickFrom(slot, ok) {
   ok = constrain(slot, ok);
   // Avoid repeating the current phrase when there is a choice (pins can leave none).
@@ -541,7 +559,7 @@ function rerollPick(keys) {
     if (!keys.includes(s.key)) continue;
     // A full shuffle reshapes the phrase; rerolling one card keeps which words it has.
     const shape = keys.length > 1 ? randomShape(s.key) : shapeOf(state.pick[s.key]);
-    pickFrom(s.key, Array.from({ length: 300 }, () => applyPins(s.key, randomPhrase(s.key, 0, shape))));
+    pickLazy(s.key, () => applyPins(s.key, randomPhrase(s.key, 0, shape)));
   }
   state.seed = 1 + rand(1e9);
   // New seed, new telling: hand-tuned beats only survive if pinned.
@@ -1043,7 +1061,7 @@ function dailyIn(date) {
     Object.assign(state, { form: keys[n % keys.length], dial: 1, beats: {}, pins: [], pick: {} });
     state.len = Math.min(3, maxLen());
     for (const sl of SLOTS) state.pick[sl.key] = randomPhrase(sl.key);
-    for (const sl of SLOTS.slice(1)) pickFrom(sl.key, Array.from({ length: 300 }, () => randomPhrase(sl.key)));
+    for (const sl of SLOTS.slice(1)) pickLazy(sl.key, () => randomPhrase(sl.key));
     state.seed = 1 + rand(1e9);
     const label = new Date(day + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
     return { h: label, d: 1, n: 3, s: fixedSnapshot() };

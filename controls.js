@@ -105,7 +105,7 @@ function switchGrammar(id) {
   state.len = Math.min(Math.max(state.len, 2), maxLen());
   for (const c of SLOTS) state.pick[c.key] = randomPhrase(c.key);
   state.seed = 1 + rand(1e9);
-  for (const c of SLOTS.slice(1)) pickFrom(c.key, Array.from({ length: 300 }, () => randomPhrase(c.key)));
+  for (const c of SLOTS.slice(1)) pickLazy(c.key, () => randomPhrase(c.key));
   renderBankForm();
   renderBank();
   renderShelf();

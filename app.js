@@ -304,7 +304,7 @@ addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHi
     for (const s of SLOTS) state.pick[s.key] = randomPhrase(s.key);
     state.seed = 1 + rand(1e9);
     // Settle the pairs under the dial before the first render.
-    for (const s of SLOTS.slice(1)) pickFrom(s.key, Array.from({ length: 300 }, () => randomPhrase(s.key)));
+    for (const s of SLOTS.slice(1)) pickLazy(s.key, () => randomPhrase(s.key));
   }
   $("#live").hidden = !ROOMS_HOST;
   renderBankForm();
