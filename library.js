@@ -23,6 +23,8 @@ function forkGrammar(id) {
   copy.name = `${src.name} (fork)`.slice(0, 40);
   copy.id = freshId(copy.name);
   copy.forkedFrom = src.id;
+  // Every grammar says what's worth keeping; a fork of one that doesn't gets the fallback, spelled out.
+  copy.keep = clone(keepOf(src));
   library[copy.id] = copy;
   saveLibrary();
   switchGrammar(copy.id);
@@ -58,7 +60,7 @@ function refreshActive(g) {
   state.sel = null;
   renderBankForm();
   renderBank();
-  renderCast();
+  renderShelf();
   render();
 }
 
@@ -165,6 +167,11 @@ function editorHtml(g) {
     <label class="bf-field"><span class="dial-label">Description</span><textarea data-lib-field="description" rows="3" maxlength="400">${esc(g.description || "")}</textarea></label>
     <label class="bf-field"><span class="dial-label">Headline label</span><input data-lib-field="headline" value="${esc(g.headline || "")}" maxlength="30" placeholder="The line"></label>
     <label class="bf-field"><span class="dial-label">Headline template</span><input data-lib-field="line" value="${esc(g.line)}" maxlength="200"></label>
+    <div class="cp-row">
+      <label class="bf-field"><span class="dial-label">Worth keeping</span><select data-lib-keep="card">${g.cards.filter((c) => headlineCards(g).includes(c.key)).map((c) => `<option value="${esc(c.key)}" ${keepOf(g).card === c.key ? "selected" : ""}>${esc(c.label)}</option>`).join("")}</select></label>
+      <label class="bf-field"><span class="dial-label">Shelf name</span><input data-lib-keep="name" value="${esc(keepOf(g).name)}" maxlength="30"></label>
+      <label class="bf-field"><span class="dial-label">Menu verb</span><input data-lib-keep="verb" value="${esc(keepOf(g).verb)}" maxlength="30"></label>
+    </div>
     <p class="bf-hint">Cards: ${g.cards.map((c) => `<code>{${esc(c.key)}}</code>`).join(" ")}${g.pronouns ? `; pronouns: ${PRONOUN_TOKENS.map((t) => `<code>{${t}}</code>`).join(" ")}` : ""}. Changes save when you leave a field.</p>`;
   else if (lib.tab === "words") {
     const [s, k] = lib.slot.split(".");
@@ -178,7 +185,7 @@ function editorHtml(g) {
         <select name="tier">${TIER_NAMES.map((n, i) => `<option value="${i}">${n}</option>`).join("")}</select>
         ${part?.mood ? `<select name="v"><option value="1">good</option><option value="0" selected>mixed</option><option value="-1">bad</option></select>` : ""}
         ${part?.det ? `<select name="det">${part.det.map((d) => `<option>${esc(d)}</option>`).join("")}</select>` : ""}
-        ${part?.pronouns ? `<select name="pr"><option value="they">they</option><option value="she">she</option><option value="he">he</option></select>` : ""}
+        ${part?.pronouns ? `<select name="pr"><option value="they">they</option><option value="she">she</option><option value="he">he</option><option value="it">it</option></select>` : ""}
         <button class="primary">Add</button>
       </form>`;
   } else if (lib.tab === "forms") {
@@ -288,6 +295,7 @@ document.addEventListener("change", (e) => {
   else if (d.libForm !== undefined) { lib.formKey = el.value; lib.beatKey = null; renderLibrary(); }
   else if (d.libBeat !== undefined) { lib.beatKey = el.value; renderLibrary(); }
   else if (d.libField) editGrammar(id, (g) => { const val = d.libField === "line" ? el.value : cleanWord(el.value) || (d.libField === "name" ? g.name : ""); if (val) g[d.libField] = val; else delete g[d.libField]; });
+  else if (d.libKeep) editGrammar(id, (g) => { const k = { ...keepOf(g) }; k[d.libKeep] = d.libKeep === "card" ? el.value : cleanWord(el.value) || k[d.libKeep]; g.keep = k; });
   else if (d.libRule) editGrammar(id, (g) => { g.rules[d.libRule] = cleanWord(el.value); });
   else if (d.libLabel !== undefined) editGrammar(id, (g) => { g.rules.dialLabels[+d.libLabel] = cleanWord(el.value) || g.rules.dialLabels[+d.libLabel]; });
   else if (d.libLanding !== undefined) editGrammar(id, (g) => { g.rules.landing = el.checked; });

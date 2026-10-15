@@ -8,7 +8,7 @@
 //     so every trailing clause belongs to exactly one noun
 //   - phrases nest at most the grammar's maxDepth deep
 
-const PRON = { he: HE, she: SHE, they: THEY };
+const PRON = { he: HE, she: SHE, they: THEY, it: IT };
 const PRONOUN_TOKENS = ["p", "o", "pos", "is", "has", "was", "s"];
 const TIER_NAMES = ["plausible", "odd", "absurd"];
 const MOOD_NAMES = { 1: "good", 0: "mixed", "-1": "bad" };
@@ -84,7 +84,7 @@ function checkEntry(e, g) {
   else if (e.v !== undefined) return "this slot doesn't take a mood";
   if (part.det) { if (!part.det.includes(e.det)) return `needs to start with ${part.det.join(" or ")}`; }
   else if (e.det !== undefined) return "this slot doesn't take a starting word";
-  if (part.pronouns) { if (!PRON[e.pr]) return "needs pronouns: he, she or they"; }
+  if (part.pronouns) { if (!PRON[e.pr]) return "needs pronouns: he, she, they or it"; }
   else if (e.pr !== undefined) return "this slot doesn't take pronouns";
   if (!wordAllowed(e.t, g)) return `breaks this grammar's constraints (${(g.rules?.constraints || []).map(describeConstraint).filter(Boolean).join("; ")})`;
   return "";
@@ -160,6 +160,18 @@ function checkForm(f, g) {
   return "";
 }
 
+// ---------- the kept shelf ----------
+// What a grammar thinks is worth keeping: one card's phrase (Story Bits: the character, Small
+// Poems: the image), the shelf's name and the menu verb. Kept phrases collect the headlines they
+// appeared in, and "Tell another" pins one and shuffles the rest. A grammar without `keep` (an
+// older fork or link) keeps its pronoun card, or else the first card its headline names.
+const KEEP_FALLBACK = { name: "Kept", verb: "Keep this" };
+function keepOf(g) {
+  if (g.keep && g.cards.some((c) => c.key === g.keep.card)) return g.keep;
+  if (g.pronouns) return { card: g.pronouns, name: "The cast", verb: "Keep this character" };
+  return { card: headlineCards(g)[0] || g.cards[0].key, ...KEEP_FALLBACK };
+}
+
 // ---------- whole grammars ----------
 // For grammars from the library, a link, a pack or a jam. Returns "" or the first problem.
 const GRAMMAR_MAX = 200 * 1024;
@@ -198,6 +210,7 @@ function checkGrammar(g) {
     for (const p of sc.parts) {
       if (typeof p.k !== "string" || !/^[a-z]$/.test(p.k)) return `card "${key}": slot keys are single letters`;
       if (typeof p.name !== "string" || !p.name.trim() || p.name.length > 24) return `card "${key}" slot "${p.k}" needs a name`;
+      if (p.odds !== undefined && (typeof p.odds !== "number" || !(p.odds >= 0 && p.odds <= 1) || !p.opt)) return `card "${key}" slot "${p.k}": odds is a number from 0 to 1, on an optional slot`;
       if (p.needs !== undefined && p.needs !== "adj" && !pk.has(p.needs)) return `card "${key}" slot "${p.k}" needs a slot that doesn't exist`;
       if (p.det !== undefined && (!Array.isArray(p.det) || !p.det.length || !p.det.every((d) => typeof d === "string" && d.length <= 12))) return `card "${key}" slot "${p.k}": det is a short list of starting words`;
       if (!Array.isArray(p.pool) || !p.pool.length || p.pool.length > 300) return `card "${key}" slot "${p.k}" needs 1–300 words`;
@@ -225,6 +238,14 @@ function checkGrammar(g) {
     if (p.on === "mood" && ![p.a, p.b].every((k) => g.schemas[k].parts.find((x) => x.k === "n").mood)) return "a mood pair needs two cards with moods";
   }
   if (r.grounded !== undefined && !keys.has(r.grounded)) return "rules.grounded must name a card";
+  if (g.keep !== undefined) {
+    const k = g.keep;
+    if (!k || typeof k !== "object" || Array.isArray(k)) return "keep is { card, name, verb }";
+    if (!headlineCards(g).includes(k.card)) return "keep.card must name a card the headline uses";
+    if (typeof k.name !== "string" || !cleanWord(k.name) || k.name.length > 30) return "keep.name is a short label for the shelf";
+    if (typeof k.verb !== "string" || !cleanWord(k.verb) || k.verb.length > 30) return "keep.verb is a short label for the menu";
+    if (k.note !== undefined && (typeof k.note !== "string" || k.note.length > 200)) return "keep.note is up to 200 characters";
+  }
   if (r.constraints !== undefined && (!Array.isArray(r.constraints) || r.constraints.length > 6 || !r.constraints.every((c) => c && CONSTRAINT_TYPES.includes(c.type)))) return "constraints are a short list of known types";
   // Their settings end up on the page (and in the editor's inputs): letters and small numbers only.
   for (const c of r.constraints || []) {

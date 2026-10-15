@@ -164,10 +164,11 @@ function tidy(schema, ph) {
   if (ph.sub && !Object.keys(ph.sub).length) delete ph.sub;
 }
 
-// Which optional slots are filled. Nested things are kept a little shorter.
+// Which optional slots are filled. Nested things are kept a little shorter. A slot's `odds`
+// (0–1) sets how often a fresh phrase fills it at the top level.
 function randomShape(schema, depth = 0) {
   const shape = {};
-  for (const p of SCHEMAS[schema].parts) if (p.opt) shape[p.k] = rng() < (depth ? 0.35 : 0.5);
+  for (const p of SCHEMAS[schema].parts) if (p.opt) shape[p.k] = rng() < (depth ? 0.35 : p.odds ?? 0.5);
   return shape;
 }
 const shapeOf = (ph) => Object.fromEntries(Object.keys(ph.w).map((k) => [k, true]));
@@ -369,6 +370,45 @@ function story(ctx) {
     const btn = `<button class="beat-btn" data-beat-btn="${key}" aria-haspopup="dialog" aria-expanded="${sel === key}" aria-label="Tune the sentence (${esc(beatGroup(key).name)}): ${esc(said.length > 90 ? said.slice(0, 88) + "…" : said)}${pinned ? ", pinned" : ""}">¶</button>`;
     return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}">${btn}${fill(line.t, ctx)}</span>`;
   }).join(form().lines ? "<br>" : " "));
+}
+
+// ---------- the kept shelf ----------
+// What a grammar keeps (keepOf in grammar.js): one card's phrase, with the headlines it has been
+// in. An entry is { g, card, ph, bits }, keyed by grammar, card and head word, so a character
+// who gains a descriptor is still the same character.
+const shelfKey = (c) => `${c.g || "story-bits"}|${c.card}|${JSON.stringify(c.ph.w.n)}`;
+const shelfOk = (c) => !!c && typeof c.card === "string" && !!c.ph && typeof c.ph.w === "object" && c.ph.w !== null && Array.isArray(c.bits);
+// The cast, as it was stored before the shelf ({ g?, who, bits }, who once a bare index), as
+// shelf entries. pronounsOf(gid) names a grammar's pronoun card, if it knows the grammar.
+function castToShelf(raw, pronounsOf = () => null) {
+  return (Array.isArray(raw) ? raw : []).filter((c) => c && typeof c === "object")
+    .map((c) => (typeof c.who === "number" ? { ...c, who: { w: { n: c.who } } } : c))
+    .map((c) => { const g = c.g || "story-bits"; return { g, card: pronounsOf(g) || "who", ph: c.who, bits: c.bits }; })
+    .filter(shelfOk);
+}
+// The entries for grammar g's keep card that still fit it.
+const shelfFor = (list, g) => { const card = keepOf(g).card; return list.map((c, i) => ({ c, i })).filter(({ c }) => c.g === g.id && c.card === card && withGrammar(g, () => validPhrase(card, c.ph, 0))); };
+// Add an entry, or merge it into the one with the same key (newest phrase, headlines merged).
+function shelve(list, entry) {
+  let c = list.find((x) => shelfKey(x) === shelfKey(entry));
+  if (!c) { c = entry; list.unshift(c); }
+  c.ph = entry.ph;
+  c.bits = [...new Set([...entry.bits, ...c.bits])];
+  return c;
+}
+// A kept phrase as text: a character's own pronouns, anything else with the piece's.
+const keptWho = (card, ph) => (card === G.pronouns ? word(card, ph, "n") : person());
+const keptText = (card, ph) => flat(tokens(card, ph, keptWho(card, ph), card));
+// A shelf's name mid-sentence: "the cast", "your material"; with "my" for "the": "my cast".
+const shelfName = (g, mine = false) => { const n = keepOf(g).name.replace(/^The\b/, mine ? "my" : "the"); return n.charAt(0).toLowerCase() + n.slice(1); };
+// What the headline is called, as a count: "3 bits", "1 line".
+const headlineCount = (n) => `${n} ${(G.headline || "The line").replace(/^the\s+/i, "").toLowerCase()}${n === 1 ? "" : "s"}`;
+// Put a kept phrase (from the shelf or a space's lore) into its card, every word pinned, so a
+// reroll of the other cards tells another piece around it.
+function pinPhrase(card, ph) {
+  state.pick[card] = clone(ph);
+  state.pins = state.pins.filter((p) => !p.startsWith(card + "|")).concat(Object.keys(ph.w).map((k) => `${card}|${k}`));
+  state.sel = null;
 }
 
 // ---------- picking under the dial ----------

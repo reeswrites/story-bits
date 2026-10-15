@@ -258,7 +258,7 @@ async function openPiece(id, itemId, toVer) {
   const before = G;
   if (!loadSnapshot(data)) { toast(toVer ? `This piece doesn't fit version ${toVer}: its words moved. It stays on its own version.` : "That piece couldn't be opened (its grammar is gone)."); return; }
   state.sel = null;
-  if (G !== before) { renderBankForm(); renderBank(); renderCast(); renderLibrary(); }
+  if (G !== before) { renderBankForm(); renderBank(); renderShelf(); renderLibrary(); }
   render();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -276,29 +276,27 @@ function takeWords(id, itemId) {
   updateBankForm();
   render();
 }
+// The kept shelf goes to a space as "cast" items (the name is older than the shelf). Data:
+// { g, card, ph, bits }, plus `who` (= ph) for a character, which is what older pages read.
+const castData = (d) => (d && (d.ph || d.who) ? { g: d.g, card: d.card || "who", ph: d.ph || d.who, bits: Array.isArray(d.bits) ? d.bits : [] } : null);
 async function putCast(id) {
-  const here = castHere();
-  if (!here.length) { toast("Keep a character first (k), then put them in the space."); return; }
+  const here = shelfHere();
+  if (!here.length) { toast(`${keepOf(G).verb} first (k), then put it in the space.`); return; }
   const have = (spaces.data[id]?.items || []).filter((x) => x.kind === "cast");
   for (const { c } of here) {
-    const prev = have.find((x) => x.data?.who && castKey({ g: x.data.g, who: x.data.who }) === castKey(c));
-    const name = cleanWord(flat(tokens(G.pronouns, c.who, word(G.pronouns, c.who, "n"), G.pronouns))).slice(0, 80);
+    const prev = have.find((x) => { const d = castData(x.data); return d && shelfKey(d) === shelfKey(c); });
+    const name = cleanWord(keptText(c.card, c.ph)).slice(0, 80);
     const src = srcOf.get(G);
-    await spaceOp(id, "put", { item: { ...(prev && { id: prev.id }), kind: "cast", name, data: { g: c.g, ...(src && { gs: src.sp, gv: src.ver }), who: c.who, bits: c.bits.slice(0, 50) } } });
+    await spaceOp(id, "put", { item: { ...(prev && { id: prev.id }), kind: "cast", name, data: { g: c.g, ...(src && { gs: src.sp, gv: src.ver }), card: c.card, ph: c.ph, ...(c.card === "who" && { who: c.ph }), bits: c.bits.slice(0, 50) } } });
   }
-  toast(`The cast is in ${spaces.data[id]?.name}.`);
+  toast(`${keepOf(G).name} is in ${spaces.data[id]?.name}.`);
 }
 function takeCast(id, itemId) {
   const it = spaces.data[id]?.items.find((x) => x.id === itemId);
-  const d = it?.data;
-  if (!d || d.g !== G.id || !G.pronouns || !validPhrase(G.pronouns, d.who, 0)) { toast("That character is from another grammar. Switch to it first."); return; }
-  const entry = { g: d.g, who: clone(d.who), bits: (Array.isArray(d.bits) ? d.bits : []).filter((b) => typeof b === "string").map((b) => cleanWord(b).slice(0, 300)) };
-  const c = cast.find((x) => castKey(x) === castKey(entry));
-  if (c) c.bits = [...new Set([...c.bits, ...entry.bits])];
-  else cast.unshift(entry);
-  saveCast();
-  renderCast();
-  toast("They're in your cast now.");
+  const d = castData(it?.data);
+  if (!d || d.g !== G.id || d.card !== keepOf(G).card || !validPhrase(d.card, d.ph, 0)) { toast("That's from another grammar. Switch to it first."); return; }
+  addToShelf({ g: d.g, card: d.card, ph: clone(d.ph), bits: d.bits.filter((b) => typeof b === "string").map((b) => cleanWord(b).slice(0, 300)) });
+  toast(`It's on your shelf now: ${keepOf(G).name}.`);
 }
 
 // ---------- lore: kept phrases ----------
@@ -323,10 +321,16 @@ function useLore(l) {
   if (!l.ph || l.g !== G.id || !SCHEMAS[l.card] || !validPhrase(l.card, l.ph, 0)) { toast(`“${l.text}” is from another grammar; type it in as your own words instead.`); return; }
   if (state.room && jamReadOnly()) { toast("You're not an editor in this jam."); return; }
   if (!stanza().slots.includes(l.card)) { toast("That card isn't in this stanza. Make the piece longer."); return; }
-  state.pick[l.card] = clone(l.ph);
-  state.pins = state.pins.filter((p) => !p.startsWith(l.card + "|")).concat(Object.keys(l.ph.w).map((k) => `${l.card}|${k}`));
-  state.sel = null;
+  pinPhrase(l.card, l.ph);
   render();
+}
+// Lore and the shelf hold the same thing, a card's phrase ({ g, card, ph }): lore is shared and
+// takes any card, the shelf is yours, takes the grammar's keep card and remembers headlines.
+// A lore phrase on the keep card can move to your shelf.
+function shelveLore(l) {
+  if (!l.ph || l.g !== G.id || l.card !== keepOf(G).card || !validPhrase(l.card, l.ph, 0)) return;
+  addToShelf({ g: l.g, card: l.card, ph: clone(l.ph), bits: [] });
+  toast(`“${cleanWord(l.text)}” is on your shelf: ${keepOf(G).name}.`);
 }
 // Callbacks: kept phrases a copy uses that its start didn't. Text match, so it survives versions.
 const plainText = (html) => html.replace(/<[^>]*>/g, " ").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").toLowerCase();
@@ -493,7 +497,7 @@ function itemHtml(s, it) {
   } else if (it.kind === "cast") {
     const bits = Array.isArray(it.data.bits) ? it.data.bits.filter((b) => typeof b === "string") : [];
     body = `<ul class="sp-bits">${bits.slice(0, 4).map((b) => `<li>${esc(cleanWord(b))}</li>`).join("")}</ul>`;
-    acts = `<button class="ghost" data-sp-takecast="${esc(it.id)}">Add to my cast</button>`;
+    acts = `<button class="ghost" data-sp-takecast="${esc(it.id)}">Add to ${esc(shelfName(G, true))}</button>`;
   }
   return `<li class="sp-item">
     <div class="sp-item-top"><b>${esc(cleanWord(it.name))}</b>
@@ -527,7 +531,7 @@ function renderSpaces() {
     const visiting = spaces.visiting?.id === v.id;
     const list = (k, title, empty, add) => `<h4 class="dial-label">${title} <span class="count">${of(k).length}</span></h4>
       ${of(k).length ? `<ul class="sp-items">${of(k).map((it) => itemHtml(v, it)).join("")}</ul>` : `<p class="empty">${empty}</p>`}${can("edit") && add ? `<div class="cp-row">${add}</div>` : ""}`;
-    const lore = v.lore.length ? `<ul class="sp-lore">${v.lore.map((l) => `<li><button class="sp-lore-use" data-sp-lore="${esc(l.id)}" title="Use this phrase${l.label ? ` as the ${esc(l.label.toLowerCase())}` : ""}">“${esc(cleanWord(l.text))}”</button><span class="sp-sub">${esc(cleanWord(l.label || ""))}${l.by ? ` · ${esc(cleanWord(l.by))}` : ""}${l.jam ? ` · jam ${esc(l.jam)}` : ""}</span>${can("edit") ? `<button class="bw-x" data-sp-unlore="${esc(l.id)}" aria-label="Forget this phrase">✕</button>` : ""}</li>`).join("")}</ul>` : `<p class="empty">No lore yet. Tap a word, then <i>Keep as lore</i>, to keep the phrase it's in; reusing one later is a callback.</p>`;
+    const lore = v.lore.length ? `<ul class="sp-lore">${v.lore.map((l) => `<li><button class="sp-lore-use" data-sp-lore="${esc(l.id)}" title="Use this phrase${l.label ? ` as the ${esc(l.label.toLowerCase())}` : ""}">“${esc(cleanWord(l.text))}”</button><span class="sp-sub">${esc(cleanWord(l.label || ""))}${l.by ? ` · ${esc(cleanWord(l.by))}` : ""}${l.jam ? ` · jam ${esc(l.jam)}` : ""}</span>${l.g === G.id && l.card === keepOf(G).card ? `<button class="ghost subtle" data-sp-shelve="${esc(l.id)}" title="Add to ${esc(keepOf(G).name)}">Keep</button>` : ""}${can("edit") ? `<button class="bw-x" data-sp-unlore="${esc(l.id)}" aria-label="Forget this phrase">✕</button>` : ""}</li>`).join("")}</ul>` : `<p class="empty">No lore yet. Tap a word, then <i>Keep as lore</i>, to keep the phrase it's in; reusing one later is a callback.</p>`;
     const jams = v.jams.length ? `<ol class="sp-jams">${v.jams.slice().reverse().map((j) => `<li>${j.code ? `Jam <b>${esc(j.code)}</b>` : "A jam"} · ${when(j.at)}${Array.isArray(j.rounds) && j.rounds.length ? ` · ${j.rounds.length} round${j.rounds.length === 1 ? "" : "s"}${j.rounds.filter((r) => r.top?.length).slice(-1).map((r) => `, last won by ${esc(r.top.map(cleanWord).join(" & "))}`).join("")}` : ""}</li>`).join("")}</ol>` : `<p class="empty">No jams here yet.</p>`;
     const invites = v.keys ? `<div class="rb-invites"><span class="dial-label">Invite</span>
         <button class="ghost" data-sp-invite="edit">Edit link</button><button class="ghost" data-sp-invite="comment">Comment link</button><button class="ghost" data-sp-invite="view">View link</button>${v.public ? `<button class="ghost" data-sp-invite="public">Public link</button>` : ""}${v.role === "owner" ? `<button class="ghost subtle" data-sp-invite="owner" title="Keep this somewhere safe: it's how you manage the space from another browser">Owner link</button>` : ""}</div>` : v.public ? `<div class="rb-invites"><button class="ghost" data-sp-invite="public">Copy public link</button></div>` : "";
@@ -542,7 +546,7 @@ function renderSpaces() {
       ${of("grammar").length ? `<p class="bf-hint">Use, fork and share these from the Grammars list above, beside yours.</p>` : ""}
       ${list("piece", "Kept pieces", "No pieces kept here yet.", `<button class="ghost" data-sp-keep>Keep this piece here</button>`)}
       ${list("words", "Word packs", "No word packs yet.", `<button class="ghost" data-sp-putwords>Put my ${esc(G.name)} words here</button>`)}
-      ${G.pronouns || of("cast").length ? list("cast", "Cast", "No characters yet.", G.pronouns ? `<button class="ghost" data-sp-putcast>Put my cast here</button>` : "") : ""}
+      ${list("cast", "Kept", "Nothing kept yet.", `<button class="ghost" data-sp-putcast>Put ${esc(shelfName(G, true))} here</button>`)}
       <h4 class="dial-label">Lore <span class="count">${v.lore.length}</span></h4>${lore}
       <h4 class="dial-label">Jams</h4>${jams}
       ${v.role === "owner" ? `<div class="rb-keep sp-settings">
@@ -587,6 +591,7 @@ document.addEventListener("click", (e) => {
   else if (d.spRemove) { const it = spaces.data[id]?.items.find((x) => x.id === d.spRemove); if (it && confirm(`Remove “${cleanWord(it.name)}” from ${spaces.data[id].name}${it.kind === "grammar" ? ", with every version" : ""}? Its comments go too.`)) spaceOp(id, "remove", { id: d.spRemove }); }
   else if (d.spNotes) { spaces.open = spaces.open === d.spNotes ? null : d.spNotes; renderSpaces(); }
   else if (d.spUncomment) spaceOp(id, "uncomment", { id: d.spUncomment });
+  else if (d.spShelve) { const l = currentLore().find((x) => x.id === d.spShelve); if (l) shelveLore(l); }
   else if (d.spLore) { const l = currentLore().find((x) => x.id === d.spLore); if (l) useLore(l); }
   else if (d.spUnlore) spaceOp(id, "unlore", { id: d.spUnlore });
   else if (d.spDelete !== undefined) deleteSpace(id);

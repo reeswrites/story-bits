@@ -6,7 +6,7 @@
 
 Live: https://reeswrites.com/story-bits/ · Design notes: [docs/design.md](docs/design.md)
 
-Story Bits began with one rule for funny stories, from a note: *something happened to someone, and they feel some way about it*, and a funny story is an incongruity that lands somewhere it's safe to laugh. That rule is now one grammar. Poems are another. Make your own.
+Story Bits began with one rule for funny stories, from a note: *something happened to someone, and they feel some way about it*, and a funny story is an incongruity that lands somewhere it's safe to laugh. That rule is now one grammar. Poems, sayings, origin myths and dating-app prompts are others. Make your own.
 
 ## The page
 
@@ -22,7 +22,7 @@ Everything else:
 - **With others** has *Start a jam*, *Pass it around* and *Today's bit*.
 - **More** (next to Shuffle) has *Retell*, *Keep this character* and *Copy link*.
 - **↶ ↷** undo and redo appear once there's something to undo (also **⌘Z** / **Ctrl+Z**, **⇧⌘Z** / **Ctrl+Shift+Z**). Undo covers words, lines, form, length, the dial and the grammar. In a together jam an undo goes out like any other edit and only puts back what you changed; in a challenge it counts like putting a change back.
-- **Word bank**, **Grammars & spaces** and **The cast** fold away below the piece.
+- **Word bank**, **Grammars & spaces** and the grammar's **kept shelf** (*The cast*, *Images*…) fold away below the piece.
 
 Which of these are open is remembered in this browser. In a jam or a challenge, its bar stays on the page.
 
@@ -34,10 +34,10 @@ Which of these are open is remembered in this browser. In a jam or a challenge, 
 - **Tap the rest of a sentence** to tune that line (the beat) the same way.
 - **Ghost slots**: with a word selected, dashed `+ adverb` / `+ clause` chips show where an optional word can go.
 - **Nesting**: some words hold a whole phrase of another card (*blames …*, *brought back from …*), tunable inside. Hover a word to see which phrase it belongs to.
-- **Form and length**: each grammar has forms (a funny story as *The bit*, *Local news*, *Wedding toast*, *Complaint to the manager*; a poem as *Couplets* or *Refrain*). Grow the piece a stanza at a time; earlier lines stay put.
+- **Form and length**: each grammar has forms (a funny story as *The bit*, *Local news*, *Wedding toast*, *Complaint to the manager*; a poem as *Couplets* or *Refrain*; a saying on a pillow sampler or in a fortune cookie). Grow the piece a stanza at a time; earlier lines stay put.
 - **The dial** sets how much the parts disagree. What disagreement means is the grammar's call (below).
 - **Word bank**: your own words, per grammar, kept in this browser. They show up in shuffles and the picker and travel inside links. *Copy pack link* shares them.
-- **The cast**: in grammars with characters, keep one and tell more stories about them.
+- **The kept shelf**: every grammar says what's worth keeping and what its shelf is called: Story Bits keeps characters (*The cast*), Small Poems images, Sayings its suspects, Just-so stories creatures, Hinge prompts your answers. **More → Keep this…** (**k**) shelves the phrase with the headline it was in; **Tell another** pins it and shuffles everything else.
 - **Links** carry the whole piece: every word (yours too), the grammar (inline if it's yours), form, tuned lines, dial, length. Older links still open.
 
 Nothing here needs an account, and nothing leaves your browser unless you share a link, open a jam, or put something in a space.
@@ -53,11 +53,15 @@ A grammar is one JSON document ([docs/design.md](docs/design.md) has the full mo
 | `line` | the headline template: `{who} {what}, and {p} {is} {feel}.` |
 | `forms` | shapes of a telling: stanzas of beats; each beat line tiered plain → strange |
 | `rules` | what the dial clashes (pairs of cards, on **mood**, **register** or **sound**), whether forms must **land**, and **constraints** |
+| `keep` | what's worth keeping: `{ card, name, verb }`, e.g. `{ card: "who", name: "The cast", verb: "Keep this character" }` |
 
 Built in:
 
 - **Story Bits**: the humor grammar. Event ↔ feeling clash on mood; place ↔ event and thing ↔ place on register; every form lands.
 - **Small Poems**: an image, what it does, where, when. Image ↔ place clash on sound (alliteration fits), motion ↔ time on register. Nothing has to land. Forms render line by line; *Refrain* repeats its line like a ghazal.
+- **Sayings**: advice, who it's about, and why: *Never trust a heron that knows your name, for it has already told the others.* Advice ↔ subject clash on register, advice ↔ reason on mood (a warning with a cheerful reason). Forms: the bare saying, *As grandmother said*, a pillow sampler, a fortune cookie with lucky numbers.
+- **Just-so stories**: *Why the heron stands on one leg.* The old world, what it did, and how it's been ever since. Creature ↔ quirk clash on register, the deed ↔ *ever since* on mood (a punishment that's a reward). Every telling lands on *and that is why*. Forms: the tale, at bedtime (with questions), a field guide entry.
+- **Hinge prompts**: a fixed dating-app prompt and the answer you tune: *My most irrational fear: geese.* Prompt ↔ answer clash on mood (the fear is warm bread). Forms: one prompt (with who liked it), a three-prompt profile, a classified ad (*Retired lighthouse keeper seeks someone to argue with about soup. Must love weather.*).
 
 **Constraints**, Oulipo-style, filter what a grammar offers, so it can't produce a word that breaks them: a **lipogram** (no letter *e*, covering words, determiners and lines), **alliteration** (every word starts with a letter), **short words** (a syllable cap), or **closed** (no word bank).
 
@@ -79,12 +83,12 @@ Open one with **Start a jam**. A jam is a shared session on the room server; eve
 
 ## Spaces
 
-A **space** is a shared folder for a group, kept until you delete it: its grammars, word packs, kept pieces, cast, **lore** (kept phrases), comments and jam history. Create one under **Grammars & spaces**; invite people with its edit, comment or view link, like a jam.
+A **space** is a shared folder for a group, kept until you delete it: its grammars, word packs, kept pieces, kept shelves, **lore** (kept phrases), comments and jam history. Create one under **Grammars & spaces**; invite people with its edit, comment or view link, like a jam.
 
 - **Grammars are versions.** Publishing an edit adds version *n + 1*; nothing is overwritten, and a piece kept with version 1 still opens in version 1 (*Open in v3* moves it, if its words still fit). Publishing from an old version, after someone else published, is refused rather than silently merged.
 - **Side by side**: the Grammars list shows this browser's grammars next to each space's. *Fork to mine* copies one into your library; *Publish ↑* sends one of yours to a space (as the next version of what you forked, or as a new grammar).
-- **Pieces, words, cast**: keep the piece on the page in a space; put your word bank or cast there; add a space's words or characters to yours.
-- **Lore**: tap a word, then *Keep as lore*, to keep the phrase it's in. Lore can be dropped back into a piece; in a workshop, a copy that brings back a kept phrase is marked as a **callback**.
+- **Pieces, words, kept shelves**: keep the piece on the page in a space; put your word bank or shelf there; add a space's words or kept phrases to yours.
+- **Lore**: tap a word, then *Keep as lore*, to keep the phrase it's in. Lore can be dropped back into a piece; in a workshop, a copy that brings back a kept phrase is marked as a **callback**. Lore and the shelf hold the same thing (a card's phrase): lore is the group's and takes any card; your shelf takes the grammar's keep card and remembers headlines. A lore phrase on that card has a *Keep* button that puts it on your shelf.
 - **Jams in a space**: *Start a jam here* (or *Open in a space* from a jam's bar). Everyone in the jam gets the space's grammars and lore through the jam, without its keys; kept phrases and finished rounds go back to the space.
 - **Public spaces** are how things get published: anyone with the id can view (never change) them. A grammar's link becomes `#sp=K7Q2M9XA/its-id` instead of a 13 KB `#grammar=` link, and a piece made with a public space's grammar links by version instead of carrying the grammar.
 - **Export** saves a whole space, every version included, to a file; *Make one from an exported file* restores it as a new space.
@@ -93,7 +97,7 @@ Your spaces and their keys are listed in this browser only. Every client checks 
 
 ## What's stored
 
-- **In your browser** (localStorage): your grammars, word bank, cast, nickname, the list of spaces you've joined with their invite keys, which sections are open, whether you've seen the first-run hint, whether part labels show (and how many words you've tuned, up to a few), and the piece you had before your last reload. Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
+- **In your browser** (localStorage): your grammars, word bank, kept shelf (`story-bits-kept`; the older `story-bits-cast` is copied over once and left as it was), nickname, the list of spaces you've joined with their invite keys, which sections are open, whether you've seen the first-run hint, whether part labels show (and how many words you've tuned, up to a few), and the piece you had before your last reload. Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
 - **In a jam** (its own storage on Cloudflare): the shared piece, comments (with nicknames), finished workshop rounds (the start, each copy, notes, claps; up to 50), and, if it's in a space, that space's id and name and a copy of its grammars, lore and cast. How long it's kept is the host's call: a month or a year after it's last used, or until the host deletes it (a year by default). The host can wipe its history and comments, or delete the whole jam, any time.
 - **In a space** (its own storage on Cloudflare): its name and keys, grammars (every version), word packs, kept pieces, cast, lore, comments (with nicknames), and a summary of each linked jam's rounds (names and winners). Up to 6 MB. How long it's kept is the owner's call: **until they delete it** (the default), or a year or a month after it's last used; choosing a time asks first, and the space shows the date it would go, highlighted near the end. The owner can delete it any time, and export it first.
 
@@ -117,7 +121,7 @@ No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in gram
 python3 -m http.server 4290
 ```
 
-Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js` and `engine.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints, v1–v4 link round-trips, `checkGrammar`, nested phrases and escaping. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
+Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js` and `engine.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases and escaping. Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
 
 ```bash
 node --test test/*.test.mjs

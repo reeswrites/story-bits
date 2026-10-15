@@ -160,7 +160,7 @@ function applyDoc() {
     applySnapshot(parsed);
     Object.assign(state, keep);
     // A different grammar: your selection and pins were in the old one.
-    if (G !== before) { state.sel = null; state.pins = []; renderBankForm(); renderBank(); renderCast(); renderLibrary(); }
+    if (G !== before) { state.sel = null; state.pins = []; renderBankForm(); renderBank(); renderShelf(); renderLibrary(); }
     render();
   } finally {
     room.applying = false;

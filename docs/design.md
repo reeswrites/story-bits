@@ -5,7 +5,7 @@ a jam. This note records the model and the decisions behind it.
 
 ## Principles
 
-- **Single-player and local-first by default.** No account. Your grammars, word bank and cast
+- **Single-player and local-first by default.** No account. Your grammars, word bank and kept shelf
   live in your browser; a piece lives in its link. Nothing touches a server unless you open a jam or put something in a space.
 - **Selection and recombination, not a blank page.** You choose among supplied words and lines,
   step them plain → strange, and add your own when the supply runs out.
@@ -23,10 +23,22 @@ A grammar is one shareable, forkable JSON document:
 | `line` | the headline: a template over cards and pronouns (`{who} {what}, and {p} {is} {feel}.`) |
 | `forms` | shapes of a telling: stanzas that bring in cards and fill paragraphs with beats; beat lines are tiered plain → strange |
 | `rules` | what the dial means: which card pairs can clash and on what (`mood`, `register`, `sound`), whether every form must land, and word constraints |
+| `keep` | what's worth keeping: `{ card, name, verb, note? }`; the card must be in the headline |
 
 Story Bits' humor model is the `story-bits` grammar's rules: event/feeling clash on mood,
 place/event and thing/place clash on register, and every form must land. Poetry is another grammar
 with other rules (clash on sound and register, no landing). The engine doesn't know about humor.
+Sayings, Just-so stories and Hinge prompts are three more (2026-10-15): a proverb (advice ↔ reason
+on mood), an origin myth (deed ↔ *ever since* on mood; lands on "and that is why"), and a
+dating-app prompt whose stems are a card (prompt ↔ answer on mood and register).
+
+Pair order matters twice: the first pair is the one the middle dial setting clashes, and when a
+card is picked against cards that haven't been re-picked yet, the later pairs are the ones that
+relax first. Put pairs against already-settled cards (and the `grounded` card) first, or a card
+can drift to match a stale neighbor's register.
+
+A slot's `odds` (0–1) sets how often a fresh phrase fills that optional slot (default 0.5), so a
+grammar can keep its headline short. Pronoun sets are he, she, they and it.
 
 **Constraints** restrict what a word slot (or the whole grammar) accepts, in the Oulipo spirit:
 a lipogram (no letter *e*), alliteration (all words start with the same letter), a syllable cap,
@@ -35,6 +47,28 @@ grammar can't produce a word that breaks it.
 
 **Nesting** is any word whose text names a card (`blames {thing}`): that word holds a whole phrase
 of that card, tunable the same way, to `maxDepth`.
+
+### Decision: one kept shelf, declared by the grammar (2026-10-15)
+
+The cast used to exist only for grammars with a pronoun card. Now every grammar declares what's
+worth keeping (`keep: { card, name, verb }`): Story Bits keeps the character (*The cast*), Small
+Poems the image (*Images*), Sayings the subject (*The usual suspects*), Just-so stories the
+creature (*The menagerie*), Hinge prompts the answer (*Your material*). A shelf entry is
+`{ g, card, ph, bits }`: the kept phrase and the headlines it appeared in, keyed by grammar, card
+and head word. *Tell another* pins the phrase and rerolls every other card, in any grammar. A
+grammar without `keep` (an older fork or link) keeps its pronoun card, else the first card its
+headline names; forking writes the fallback out, so every new grammar has one.
+
+Storage moved from `story-bits-cast` (`{ g, who, bits }`) to `story-bits-kept`. The first load
+copies the cast across and leaves the old key untouched, so nothing is lost if an older page opens
+it. In a space, shelf entries are still items of kind `cast` (the room server needs no change),
+with `{ g, card, ph, bits }` and, for a `who` card, `who` too, which older pages read.
+
+Lore (a space's kept phrases) is the same shape, `{ g, card, ph }`, and drops back into a piece
+through the same pinning as *Tell another*. The gap, kept on purpose for now: lore is shared and
+takes any card but has no headlines; the shelf is personal, takes only the keep card, and
+remembers headlines. A lore phrase on the keep card can be moved to your shelf; a shelf entry goes
+to a space as a kept item, not as lore.
 
 ## Library
 
@@ -110,7 +144,7 @@ Links:
 | grammars | each a list of immutable versions; the head is the latest | editors publish versions |
 | words | word packs: lists of checked bank entries for a grammar | editors |
 | pieces | kept pieces: v4 snapshots pinned to a version | editors |
-| cast | characters and their running bits | editors |
+| cast | kept-shelf entries: a phrase and its running headlines (any grammar's keep card) | editors |
 | lore | kept phrases, from the page or from a jam in the space | editors; linked jams |
 | comments | notes on any item | commenters |
 | jams | the jams opened in the space, and their finished rounds | linked jams |
@@ -132,14 +166,14 @@ it would go if unused, highlighted in the last weeks. Delete now removes everyth
 ### Jams in a space
 
 A jam opened from a space is linked to it by its host (who holds an edit key). The jam server
-fetches the space's context (grammars, lore, cast) and relays it to everyone in the jam, so
+fetches the space's context (grammars, lore, kept shelves) and relays it to everyone in the jam, so
 people in the jam don't need the space's keys. A phrase kept in the jam goes to the space's lore;
 finished workshop rounds go to its jam history. At a workshop reveal, a copy that reuses a kept
 phrase is marked as a **callback**.
 
 ## What's stored
 
-In your browser: grammars you've added, your word bank, your cast, and the spaces you've joined
+In your browser: grammars you've added, your word bank, your kept shelf, and the spaces you've joined
 (with their keys). In a space: its grammars (every version), items, lore, comments (nicknames) and
 jam summaries; kept until the owner deletes it by default. In a jam: the room's piece,
 grammar, comments and rounds, in that room's storage in our Cloudflare account; nicknames only; a
@@ -148,7 +182,8 @@ by default), and the host can wipe or delete it any time. Retention is a setting
 
 ## Status (2026-10-15)
 
-Built: grammar documents and checks (`grammar.js`), Story Bits and Small Poems, constraints
+Built: grammar documents and checks (`grammar.js`), Story Bits, Small Poems, Sayings, Just-so
+stories and Hinge prompts, a kept shelf per grammar, constraints
 (lipogram, alliteration, syllable cap, closed), the library (fork, edit, share, import, suggest),
 jams with roles, together mode, presence, comments, and workshop rounds with optional move limits,
 claps and critique notes. Packs carry grammars, words and forms.

@@ -320,48 +320,47 @@ function step(dir) {
   setValue(s.slot, s.path, vals[i]);
 }
 
-// ---------- cast (characters you keep telling stories about) ----------
-// Only for grammars with a pronoun card (Story Bits: who). Each entry: { g, who: phrase, bits },
-// keyed by grammar and the head word under any descriptor.
-const CAST_KEY = "story-bits-cast";
-const castKey = (c) => `${c.g || "story-bits"}|${JSON.stringify(c.who.w.n)}`;
-function loadCast() {
+// ---------- the kept shelf (phrases you keep coming back to) ----------
+// The shelf's model (shelfKey, castToShelf, pinPhrase…) is in engine.js; this is its storage.
+const SHELF_KEY = "story-bits-kept";
+const CAST_KEY = "story-bits-cast"; // before the shelf: Story Bits characters only, { g, who, bits }
+function loadShelf() {
   try {
-    const raw = JSON.parse(localStorage.getItem(CAST_KEY)) || [];
-    // Older entries stored a bare index into the people list, and had no grammar.
-    return raw.map((c) => (typeof c.who === "number" ? { ...c, who: { w: { n: c.who } } } : c))
-      .map((c) => ({ ...c, g: c.g || "story-bits" }))
-      .filter((c) => c.who && typeof c.who.w === "object" && Array.isArray(c.bits));
+    const kept = JSON.parse(localStorage.getItem(SHELF_KEY));
+    if (Array.isArray(kept)) return kept.filter(shelfOk);
+  } catch {}
+  // First run with the shelf: bring the old cast across. The old key stays as it was, so nothing
+  // is lost even if this browser goes back to an older page.
+  try {
+    const shelf = castToShelf(JSON.parse(localStorage.getItem(CAST_KEY)) || [], (g) => resolveGrammar(g)?.pronouns);
+    if (shelf.length) localStorage.setItem(SHELF_KEY, JSON.stringify(shelf));
+    return shelf;
   } catch { return []; }
 }
-function saveCast() {
-  try { localStorage.setItem(CAST_KEY, JSON.stringify(cast)); } catch {}
+function saveShelf() {
+  try { localStorage.setItem(SHELF_KEY, JSON.stringify(shelf)); } catch {}
 }
-let cast = [];
-const castHere = () => cast.map((c, i) => ({ c, i })).filter(({ c }) => c.g === G.id && G.pronouns && validPhrase(G.pronouns, c.who, 0));
+let shelf = [];
+const shelfHere = () => shelfFor(shelf, G);
+function addToShelf(entry) {
+  const c = shelve(shelf, entry);
+  saveShelf();
+  renderShelf();
+  return c;
+}
 
 function keepBit() {
-  if (!G.pronouns) return;
-  const ctx = context();
-  const line = bitLine(ctx);
-  const entry = { g: G.id, who: clone(state.pick[G.pronouns]), bits: [] };
-  let c = cast.find((x) => castKey(x) === castKey(entry));
-  if (!c) { c = entry; cast.unshift(c); }
-  c.who = entry.who;
-  if (!c.bits.includes(line)) c.bits.unshift(line);
-  saveCast();
-  renderCast();
-  toast(`Kept. ${cap(ctx.name)} now has ${c.bits.length} ${c.bits.length === 1 ? "story" : "stories"}.`);
+  const card = keepOf(G).card;
+  if (!state.pick[card]) return;
+  const c = addToShelf({ g: G.id, card, ph: clone(state.pick[card]), bits: [bitLine(context())] });
+  toast(`Kept. ${cap(keptText(card, c.ph))}: ${headlineCount(c.bits.length)} so far.`);
 }
+// Pin a kept phrase and shuffle everything else: a new piece around something kept.
 function tellAnother(i) {
-  const c = cast[i];
-  if (!c || c.g !== G.id || !G.pronouns) return;
-  const key = G.pronouns;
-  state.pick[key] = clone(c.who);
-  // Pin the character's words; shuffle everything else.
-  state.pins = state.pins.filter((p) => !p.startsWith(key + "|")).concat(Object.keys(c.who.w).map((k) => `${key}|${k}`));
-  state.sel = null;
-  reroll(SLOTS.map((x) => x.key).filter((k) => k !== key));
+  const c = shelf[i];
+  if (!c || c.g !== G.id || c.card !== keepOf(G).card) return;
+  pinPhrase(c.card, c.ph);
+  reroll(SLOTS.map((x) => x.key).filter((k) => k !== c.card));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -574,7 +573,7 @@ function histPut(want, was) {
   if (want.G !== was.G) {
     useGrammar(want.G);
     Object.assign(state, { grammar: G.id, pick: clone(want.pick), beats: { ...want.beats }, form: want.form, len: want.len, dial: want.dial, seed: want.seed, sel: null, pins: [] });
-    renderBankForm(); renderBank(); renderCast(); renderLibrary();
+    renderBankForm(); renderBank(); renderShelf(); renderLibrary();
     return;
   }
   for (const k of new Set([...Object.keys(want.pick), ...Object.keys(was.pick)])) {
@@ -737,7 +736,7 @@ function backToLast() {
   const h = stored(LAST_KEY);
   if (!h || !fromHash(h)) { toast("That piece couldn't be opened."); return; }
   state.sel = null;
-  renderBankForm(); renderBank(); renderCast(); renderLibrary();
+  renderBankForm(); renderBank(); renderShelf(); renderLibrary();
   render();
   $("#shuffle").focus({ preventScroll: true });
 }
@@ -816,7 +815,7 @@ function switchGrammar(id) {
   for (const c of SLOTS.slice(1)) pickFrom(c.key, Array.from({ length: 300 }, () => randomPhrase(c.key)));
   renderBankForm();
   renderBank();
-  renderCast();
+  renderShelf();
   render();
   renderLibrary();
 }
@@ -850,26 +849,28 @@ function setLen(n) {
   render();
 }
 
-function renderCast() {
+function renderShelf() {
   const el = $("#cast");
-  // The cast belongs to grammars with a pronoun card (characters); others don't have one.
-  $(".cast-wrap").hidden = !G.pronouns;
-  $("#keep").hidden = !G.pronouns;
-  if (!G.pronouns) return;
-  const here = castHere();
+  const k = keepOf(G);
+  $("#cast-h").textContent = k.name;
+  $("#keep").firstChild.textContent = k.verb + " ";
+  $("#keep .menu-note").textContent = `adds ${k.card === G.pronouns ? "them" : "it"} to ${shelfName(G)}`;
+  const help = $(".cast-wrap .help");
+  if (help) help.textContent = k.note || `What you've kept in ${G.name}, and every ${(G.headline || "The line").replace(/^the\s+/i, "").toLowerCase()} it has been in.`;
+  const here = shelfHere();
   if (!here.length) {
-    el.innerHTML = `<p class="empty">Nobody yet. Keep a bit and its character joins the cast. Tell more stories about them and they start to feel like someone you know.</p>`;
+    el.innerHTML = `<p class="empty">Nothing yet. Choose <i>${esc(k.verb)}</i> (<kbd>k</kbd>) and it lands here. Then tell another with it, and it starts to feel like something you know.</p>`;
     return;
   }
   el.innerHTML = here.map(({ c, i }) => {
-    const pr = word(G.pronouns, c.who, "n");
+    const pr = keptWho(c.card, c.ph);
     return `
     <article class="person">
-      <header><h3>${esc(cap(flat(tokens(G.pronouns, c.who, pr, G.pronouns))))}</h3>
-        <span class="count">${c.bits.length} ${c.bits.length === 1 ? "story" : "stories"}</span></header>
+      <header><h3>${esc(cap(keptText(c.card, c.ph)))}</h3>
+        <span class="count">${headlineCount(c.bits.length)}</span></header>
       <ul>${c.bits.slice(0, 6).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
       <div class="person-actions">
-        <button class="ghost" data-another="${i}">Tell another about ${esc(pr.o)}</button>
+        <button class="ghost" data-another="${i}">Tell another${c.card === G.pronouns ? ` about ${esc(pr.o)}` : ""}</button>
         <button class="ghost subtle" data-forget="${i}">Forget</button>
       </div>
     </article>`;
@@ -1004,7 +1005,7 @@ document.addEventListener("click", (e) => {
   else if (t.id === "daily") { const c = parseChallenge(dailyChallenge()); if (c) startGame(c); }
   else if (t.dataset.dial) { state.dial = +t.dataset.dial; reroll(SLOTS.map((x) => x.key)); }
   else if (t.dataset.another !== undefined) tellAnother(+t.dataset.another);
-  else if (t.dataset.forget !== undefined) { cast.splice(+t.dataset.forget, 1); saveCast(); renderCast(); }
+  else if (t.dataset.forget !== undefined) { shelf.splice(+t.dataset.forget, 1); saveShelf(); renderShelf(); }
   else if (t.dataset.unbank !== undefined) { bank.splice(+t.dataset.unbank, 1); saveBank(); renderBank(); updateBankForm(); render(); }
   else if (t.id === "len-up") setLen(state.len + 1);
   else if (t.id === "len-down") setLen(state.len - 1);
@@ -1152,7 +1153,7 @@ addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHi
   initFolds();
   renderParts();
   await loadPacks();
-  cast = loadCast();
+  shelf = loadShelf();
   const h = location.hash.slice(1);
   const [kind, data] = h.includes("=") ? [h.slice(0, h.indexOf("=")), h.slice(h.indexOf("=") + 1)] : ["", h];
   const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };
@@ -1205,7 +1206,7 @@ addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHi
   renderBankForm();
   renderBank();
   render();
-  renderCast();
+  renderShelf();
   renderLibrary();
   renderSpaces();
   // Spaces you've joined: fetch them (only those; nothing else leaves the browser).
