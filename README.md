@@ -72,7 +72,7 @@ A grammar is one JSON document ([docs/design.md](docs/design.md) has the full mo
 | part | what it is |
 |---|---|
 | `cards` | the pieces of a piece: *who, what happened, how they feel, where, thing*; or *image, motion, place, time* |
-| `schemas` | each card's ordered word slots, like `[intensity] [quality] noun [clause]`, with word pools; slot flags for mood, determiners, pronouns, trailing clauses |
+| `schemas` | each card's ordered word slots, like `[intensity] [quality] noun [clause]`, with word pools; slot flags for mood, determiners (`det`, or a whole `determiner` slot), pronouns, trailing clauses, `relation`s; pool words carry `tags` (word families, for Sideways) |
 | `line` | the headline template: `{who} {what}, and {p} {is} {feel}.` |
 | `forms` | shapes of a telling: stanzas of beats; each beat line tiered plain → strange |
 | `rules` | what the dial clashes (pairs of cards, on **mood**, **register** or **sound**), whether forms must **land**, and **constraints** |
@@ -80,7 +80,7 @@ A grammar is one JSON document ([docs/design.md](docs/design.md) has the full mo
 
 Built in:
 
-- **Story Bits**: the humor grammar. Event ↔ feeling clash on mood; place ↔ event and thing ↔ place on register; every form lands.
+- **Story Bits**: the humor grammar. Event ↔ feeling clash on mood; place ↔ event and thing ↔ place on register; every form lands. *Who* is a small grammar of its own: whose (*your / his / someone's / a*…), a descriptor, a person, and optionally a relation that nests another who: *your uncle's dentist*, *your sister's ex's landlord*. The pronouns are the outer person's.
 - **Small Poems**: an image, what it does, where, when. Image ↔ place clash on sound (alliteration fits), motion ↔ time on register. Nothing has to land. Forms render line by line; *Refrain* repeats its line like a ghazal.
 - **Sayings**: advice, who it's about, and why: *Never trust a heron that knows your name, for it has already told the others.* Advice ↔ subject clash on register, advice ↔ reason on mood (a warning with a cheerful reason). Forms: the bare saying, *As grandmother said*, a pillow sampler, a fortune cookie with lucky numbers.
 - **Just-so stories**: *Why the heron stands on one leg.* The old world, what it did, and how it's been ever since. Creature ↔ quirk clash on register, the deed ↔ *ever since* on mood (a punishment that's a reward). Every telling lands on *and that is why*. Forms: the tale, at bedtime (with questions), a field guide entry.

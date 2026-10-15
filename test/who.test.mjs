@@ -182,3 +182,19 @@ test("Story Bits people all have neighbors: same register, shared family", () =>
   })()`);
   assert.deepEqual(lonely, []);
 });
+
+test("Sideways offers neighbors that share a family; Zoom out reaches a relation", () => {
+  const { json } = engine();
+  const r = json(`(() => { ${WHO}
+    fresh("story-bits", "bit", 1, 1, 2);
+    state.pick.who = who("your", "uncle");
+    const side = moveCandidates("who", ["n"], "sideways").slice(0, 4).map((c) => SCHEMAS.who.parts.find((p) => p.k === "n").pool[c.ph.w.n]);
+    const zoom = moveCandidates("who", ["n"], "zoom").map((c) => { state.pick.who = c.ph; return phraseText("who"); });
+    state.pick.who = who("your", "uncle");
+    const whose = moveCandidates("who", ["w"], "sideways").map((c) => SCHEMAS.who.parts.find((p) => p.k === "w").pool[c.ph.w.w].t);
+    return { side: side.map((w) => ({ t: w.t, tags: w.tags })), zoom: zoom.slice(0, 3), whose };
+  })()`);
+  assert.ok(r.side.length === 4 && r.side.every((w) => w.tags.includes("family")), JSON.stringify(r.side));
+  assert.ok(r.zoom.length && r.zoom.every((t) => /^your uncle's \S/.test(t)), JSON.stringify(r.zoom));
+  assert.equal(r.whose[0], "my", "whose sideways: yours first");
+});

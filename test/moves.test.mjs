@@ -5,21 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { engine } from "./load.mjs";
 
-// A Story Bits copy with tags on people and a relation slot ({who}'s) on the who card.
-const TAGGED = `(() => {
-  const g = clone(GRAMMARS["story-bits"]);
-  g.id = "story-bits-moves";
-  const tags = { uncle: ["family"], grandmother: ["family"], dad: ["family"], "aunt Lorraine": ["family"], "cousin Dale": ["family"], dentist: ["work"], "old boss": ["work"], barber: ["work"] };
-  for (const w of g.schemas.who.parts.find((p) => p.k === "n").pool) if (tags[w.t]) w.tags = tags[w.t];
-  g.schemas.who.parts.unshift({ k: "r", name: "relation", opt: true, relation: true, pool: [{ t: "{who}'s", tier: 0 }] });
-  return g;
-})()`;
+// Story Bits' who card has tags on its people and a relation slot ({who}'s).
+const TAGGED = `GRAMMARS["story-bits"]`;
 
 test("every move's candidates are valid, new, and labeled", () => {
   const { json } = engine();
   const problems = json(`(() => {
     const out = [];
-    for (const g of [...Object.values(GRAMMARS), ${TAGGED}]) for (let k = 1; k <= 12; k++) {
+    for (const g of Object.values(GRAMMARS)) for (let k = 1; k <= 12; k++) {
       fresh(g, undefined, 2, k % 3, k);
       for (const c of SLOTS) walk(c.key, state.pick[c.key], (schema, p, ph, depth, path) => {
         for (const [m, cands] of Object.entries(movesFor(c.key, path))) for (const x of cands) {
@@ -42,17 +35,18 @@ test("sideways keeps slot and register, and prefers a shared tag", () => {
   const r = json(`(() => {
     fresh(${TAGGED}, undefined, 2, 1, 4);
     const pool = SCHEMAS.who.parts.find((p) => p.k === "n").pool;
-    state.pick.who = { w: { n: pool.findIndex((w) => w.t === "uncle") } };
+    state.pick.who = { w: { w: 0, n: pool.findIndex((w) => w.t === "uncle") } };
     const c = moveCandidates("who", ["n"], "sideways");
     const heads = c.map((x) => pool[x.ph.w.n].t);
+    const firstTags = c.slice(0, 4).map((x) => pool[x.ph.w.n].tags);
     // Without tags it still moves, within the register.
     fresh("story-bits", undefined, 2, 1, 4);
     const ev = moveCandidates("what", ["n"], "sideways");
     const tier = word("what", state.pick.what, "n").tier;
-    return { heads, first: heads.slice(0, 4), untagged: ev.length, sameTier: ev.every((x) => word("what", x.ph, "n").tier === tier), changed: c[0].changed, label: c[0].label };
+    return { heads, firstTags, untagged: ev.length, sameTier: ev.every((x) => word("what", x.ph, "n").tier === tier), changed: c[0].changed, label: c[0].label };
   })()`);
-  assert.deepEqual(r.first.sort(), ["aunt Lorraine", "cousin Dale", "dad", "grandmother"]);
-  assert.ok(r.heads.includes("dentist"), "untagged words still follow");
+  assert.ok(r.firstTags.every((t) => t.includes("family")), JSON.stringify(r.firstTags));
+  assert.ok(r.heads.includes("dentist"), "words outside the family still follow");
   assert.ok(r.untagged > 0 && r.sameTier);
   assert.deepEqual(r.changed, ["n"]);
   assert.match(r.label, /^Sideways: uncle → /);
@@ -87,7 +81,7 @@ test("add fills an empty optional slot that doesn't nest, and respects needs", (
   const { json } = engine();
   const r = json(`(() => {
     fresh("story-bits", undefined, 2, 1, 6);
-    state.pick.who = { w: { n: 0 } };
+    state.pick.who = { w: { w: 0, n: 0 } };
     const who = moveCandidates("who", ["n"], "add");
     const feelPool = SCHEMAS.feel.parts.find((p) => p.k === "n").pool;
     state.pick.feel = { w: { n: feelPool.findIndex((w) => !w.adj) } };

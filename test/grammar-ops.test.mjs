@@ -9,11 +9,11 @@ test("addWord appends, labels, leaves the input alone and passes checkGrammar", 
   const e = ops();
   const r = T(e, `
     const g = GRAMMARS["story-bits"], before = JSON.stringify(g);
-    const out = grammarOps.addWord(g, "who", "d", { t: "ugly", tier: 0 });
+    const out = grammarOps.addWord(g, "who", "d", { t: "lanky", tier: 0 });
     const pool = out.grammar.schemas.who.parts.find((p) => p.k === "d").pool;
-    return { label: out.label, last: pool[pool.length - 1], n: pool.length, was: g.schemas.who.parts[0].pool.length, untouched: JSON.stringify(g) === before, ok: checkGrammar(out.grammar) };`);
-  assert.equal(r.label, "added 'ugly' to Who · descriptor");
-  assert.deepEqual(r.last, { t: "ugly", tier: 0 });
+    return { label: out.label, last: pool[pool.length - 1], n: pool.length, was: g.schemas.who.parts.find((p) => p.k === "d").pool.length, untouched: JSON.stringify(g) === before, ok: checkGrammar(out.grammar) };`);
+  assert.equal(r.label, "added 'lanky' to Who · descriptor");
+  assert.deepEqual(r.last, { t: "lanky", tier: 0 });
   assert.equal(r.n, r.was + 1);
   assert.ok(r.untouched);
   assert.equal(r.ok, "");
@@ -140,7 +140,7 @@ test("setWordTags changes register, mood and pronouns without moving the word", 
     const pr = a.setWordTags(g, "who", "n", 0, { pr: "they" });
     const feel = g.schemas.feel.parts.find((p) => p.k === "n");
     const mood = a.setWordTags(g, "feel", "n", 0, { v: -1 });
-    return { tier: d.grammar.schemas.who.parts[0].pool[0], dl: d.label, pr: pr.grammar.schemas.who.parts.find((p) => p.k === "n").pool[0], prl: pr.label,
+    return { tier: d.grammar.schemas.who.parts.find((p) => p.k === "d").pool[0], dl: d.label, pr: pr.grammar.schemas.who.parts.find((p) => p.k === "n").pool[0], prl: pr.label,
       v: mood.grammar.schemas.feel.parts.find((p) => p.k === "n").pool[0].v, was: feel.pool[0].v, ml: mood.label,
       badTier: a.setWordTags(g, "who", "d", 0, { tier: 5 }).error, badKey: a.setWordTags(g, "who", "d", 0, { colour: 1 }).error,
       badMood: a.setWordTags(g, "who", "d", 0, { v: 1 }).error, text: who.pool[0].t, textAfter: pr.grammar.schemas.who.parts.find((p) => p.k === "n").pool[0].t };`);
@@ -161,15 +161,15 @@ test("setDeterminers sets the list, protects live words, and ignores retired one
   const e = ops();
   const r = T(e, `
     const g = GRAMMARS["story-bits"], a = grammarOps;
-    const part = g.schemas.who.parts.find((p) => p.k === "n");
+    const part = g.schemas.where.parts.find((p) => p.k === "n");
     const dets = [...new Set(part.pool.map((w) => w.det))];
-    const widened = a.setDeterminers(g, "who", "n", [...dets, "my"]);
-    const narrowed = a.setDeterminers(g, "who", "n", ["your"]);
-    const free = a.setDeterminers(g, "who", "d", ["x"]);
-    return { dets, list: widened.grammar.schemas.who.parts.find((p) => p.k === "n").det, label: widened.label, ok: checkGrammar(widened.grammar),
-      narrowedErr: narrowed.error, noDet: free.error, empty: a.setDeterminers(g, "who", "n", []).error };`);
+    const widened = a.setDeterminers(g, "where", "n", [...dets, "my"]);
+    const narrowed = a.setDeterminers(g, "where", "n", ["the"]);
+    const free = a.setDeterminers(g, "where", "q", ["x"]);
+    return { dets, list: widened.grammar.schemas.where.parts.find((p) => p.k === "n").det, label: widened.label, ok: checkGrammar(widened.grammar),
+      narrowedErr: narrowed.error, noDet: free.error, empty: a.setDeterminers(g, "where", "n", []).error };`);
   assert.deepEqual(r.list, [...r.dets, "my"]);
-  assert.match(r.label, /^set starting words of Who · person to /);
+  assert.match(r.label, /^set starting words of Where · place to /);
   assert.equal(r.ok, "");
   assert.ok(r.narrowedErr === undefined || /still starts with/.test(r.narrowedErr));
   assert.match(r.noDet, /no starting words/);
@@ -180,13 +180,13 @@ test("setDeterminers: a retired word may keep a starting word the list drops", (
   const e = ops();
   const r = T(e, `
     const g = GRAMMARS["story-bits"];
-    const part = g.schemas.who.parts.find((p) => p.k === "n");
-    const i = part.pool.findIndex((w) => w.det !== "your");
+    const part = g.schemas.where.parts.find((p) => p.k === "n");
+    const i = part.pool.findIndex((w) => w.det !== "the");
     if (i < 0) return { skip: true };
     const keepers = part.pool.filter((w, j) => w.det !== part.pool[i].det).length;
-    let h = grammarOps.addWord(g, "who", "n", { t: "zed", tier: 0, det: "your", pr: "they" }).grammar;
-    h = grammarOps.removeWord(h, "who", "n", i).grammar;
-    const out = grammarOps.setDeterminers(h, "who", "n", ["your"]);
+    let h = grammarOps.addWord(g, "where", "n", { t: "zed", tier: 0, det: "the" }).grammar;
+    h = grammarOps.removeWord(h, "where", "n", i).grammar;
+    const out = grammarOps.setDeterminers(h, "where", "n", ["the"]);
     return { skip: false, err: out.error };`);
   if (!r.skip) assert.ok(r.err === undefined || /still starts with/.test(r.err));
 });
@@ -277,7 +277,7 @@ test("remapPiece pins a space version (v4) when given a ref, with gx unless publ
     const g = GRAMMARS["story-bits"];
     fresh(g, undefined, 2, 1, 4);
     const snap = JSON.parse(JSON.stringify(snapshot()));
-    const ng = grammarOps.addWord(g, "who", "d", { t: "ugly", tier: 0 }).grammar;
+    const ng = grammarOps.addWord(g, "who", "d", { t: "lanky", tier: 0 }).grammar;
     const priv = grammarOps.remapPiece(snap, g, ng, { ref: { sp: "ABCD2345", ver: 3, pub: false } }).snapshot;
     const pub = grammarOps.remapPiece(snap, g, ng, { ref: { sp: "ABCD2345", ver: 3, pub: true } }).snapshot;
     return { priv: { v: priv.v, gs: priv.gs, gv: priv.gv, gx: !!priv.gx }, pub: { v: pub.v, gx: "gx" in pub } };`);
@@ -329,15 +329,15 @@ test("apply forks first when needed, then edits the copy; a local grammar edits 
   const e = ops();
   const r = T(e, `
     const g = GRAMMARS["story-bits"], before = JSON.stringify(g);
-    const out = grammarOps.apply(g, "addWord", "who", "d", { t: "ugly", tier: 0 });
-    const d = (x) => x.schemas.who.parts[0].pool.some((w) => w.t === "ugly");
+    const out = grammarOps.apply(g, "addWord", "who", "d", { t: "lanky", tier: 0 });
+    const d = (x) => x.schemas.who.parts.find((p) => p.k === "d").pool.some((w) => w.t === "lanky");
     library[out.grammar.id] = out.grammar;
     const out2 = grammarOps.apply(out.grammar, "removeWord", "who", "d", 0);
     return { forked: out.forked, from: out.from, label: out.label, orig: d(g), copy: d(out.grammar), untouched: JSON.stringify(g) === before,
       sameId: out2.grammar.id === out.grammar.id, forked2: out2.forked, label2: out2.label, unknown: grammarOps.apply(g, "nope").error, bad: grammarOps.apply(g, "removeWord", "who", "n", 0).error };`);
   assert.ok(r.forked);
   assert.equal(r.from, "story-bits");
-  assert.equal(r.label, "added 'ugly' to Who · descriptor (in your own copy)");
+  assert.equal(r.label, "added 'lanky' to Who · descriptor (in your own copy)");
   assert.equal(r.orig, false);
   assert.equal(r.copy, true);
   assert.ok(r.untouched);

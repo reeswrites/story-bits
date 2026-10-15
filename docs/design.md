@@ -19,7 +19,7 @@ A grammar is one shareable, forkable JSON document:
 | part | what it is |
 |---|---|
 | `cards` | the pieces of a piece (story: who, what happened, how they feel, where, thing) |
-| `schemas` | each card's ordered word slots (`[intensity] [quality] noun [clause]`) and their word pools; slot flags: `opt`, `needs`, `mood`, `det`, `pronouns`, `trailing`, `relation`; pool words may carry `tags` |
+| `schemas` | each card's ordered word slots (`[intensity] [quality] noun [clause]`) and their word pools; slot flags: `opt`, `needs`, `mood`, `det`, `pronouns`, `trailing`, `determiner`, `relation`; pool words may carry `tags` (1–4 short lowercase family names) |
 | `line` | the headline: a template over cards and pronouns (`{who} {what}, and {p} {is} {feel}.`) |
 | `forms` | shapes of a telling: stanzas that bring in cards and fill paragraphs with beats; beat lines are tiered plain → strange |
 | `rules` | what the dial means: which card pairs can clash and on what (`mood`, `register`, `sound`), whether every form must land, and word constraints |
@@ -61,6 +61,43 @@ engine.js). Each returns whole-phrase candidates, nearest first:
 | sound | the same first letter as a neighboring word or card, or another word in the phrase matched to this one |
 
 Every candidate passes constraints, `needs` and `maxDepth`, like any other word.
+
+### Decision: who is a grammar of its own (2026-10-15)
+
+Story Bits' **who** was `[descriptor] person`, with "your" or "the" baked into each person word
+(`det`). That made the character shallow: the only moves were along the descriptor and the head. Now
+it's `[relation | whose] [descriptor] person`:
+
+- **whose** (`w`) is a slot flagged `determiner: true`: *your / my / his / her / their / our / the /
+  a / someone's*, tunable like any word. A determiner slot is required and comes before the head;
+  its "a" agrees with the next word (*an uncle*, *a tall uncle*). "his/her/their" is just a choice
+  of whose: it doesn't point back at anyone.
+- **relation** (`r`) is an optional slot flagged `relation: true` whose one word is `{who}'s`: it
+  holds a whole other who, which brings its own whose. *your uncle's dentist*, *your sister's ex's
+  landlord*. Relations chain up to `maxDepth` (2). While a relation is filled the phrase takes no
+  whose; dropping the relation hands the inner whose back (*her brother's barber* → *her barber*).
+- **Pronouns come from the outer head**: *Your uncle's dentist got her license, and she is…* is the
+  dentist's "she".
+- checkGrammar: a determiner slot is required, before the head, and doesn't nest; a relation slot is
+  optional, before the head, and every word nests its own card. A relation can't be typed in as your
+  own word (the picker hides the box).
+
+Old links and saved pieces: pool indices are append-only, so every old `n` still names the same
+person. A who phrase without whose (v1–v4 links, the shelf, lore, drafts) is upgraded as it's read:
+`validPhrase` fills a missing determiner from the `det` its head word used to carry (kept on the
+built-in people for exactly this), else the slot's first word. Bank words saved with a `det` still
+pass `checkEntry`, since it names one of the whose words. A space's or library's fork of the old
+Story Bits keeps its old `who` shape and reads as before. Fixtures in `test/fixtures/old-links.json`
+were made by the engine before the change and must never be regenerated.
+
+### Word families: `tags`
+
+Every built-in word carries `tags`, its families within its slot: people are *family / work /
+neighbors / exes / town / services / friends / school*; places *food / transit / civic / nature…*;
+things *kitchen / garden / office…*; and so on for every grammar. Sideways reads them: same slot,
+same register, a shared tag first. checkGrammar allows 1–4 tags per word, each a short lowercase
+name (`/^[a-z][a-z-]{0,15}$/`), no repeats. Where a family was thin at a register, a few words were
+added (at the end of their pools).
 
 ### Decision: one kept shelf, declared by the grammar (2026-10-15)
 
