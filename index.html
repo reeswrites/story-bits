@@ -39,6 +39,7 @@
     </section>
 
     <section class="page" aria-label="The story">
+      <div id="game-bar" class="game-bar" hidden></div>
       <div class="page-top">
         <p class="eyebrow">The bit</p>
         <div id="legend" class="legend" role="group" aria-label="Reroll a card"></div>
@@ -51,7 +52,36 @@
         <button id="retell">Retell <kbd>r</kbd></button>
         <button id="keep">Keep this character <kbd>k</kbd></button>
         <button id="share" class="ghost">Copy link</button>
+        <button id="challenge" class="ghost challenge-btn">Challenge friends</button>
       </div>
+      <div id="challenge-panel" class="challenge-panel" hidden>
+        <p class="cp-lede">Everyone gets this exact story and the same few moves to make it theirs. Then you put the versions side by side and vote.</p>
+        <div class="cp-row">
+          <fieldset class="bf-field"><legend class="dial-label">Moves each</legend>
+            <span class="seg"><label><input type="radio" name="ch-n" value="1">1</label><label><input type="radio" name="ch-n" value="2">2</label><label><input type="radio" name="ch-n" value="3" checked>3</label><label><input type="radio" name="ch-n" value="4">4</label><label><input type="radio" name="ch-n" value="5">5</label></span>
+          </fieldset>
+          <label class="bf-field"><span class="dial-label">Your name</span><input id="ch-name" maxlength="24" placeholder="optional"></label>
+        </div>
+        <div class="cp-row">
+          <button id="ch-copy" class="primary">Copy challenge link</button>
+          <button id="ch-play" class="ghost">Play it too</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="compare" class="compare" aria-labelledby="cmp-h" hidden>
+      <div class="bank-head"><h2 id="cmp-h">Compare</h2><button id="cmp-close" class="pk-x" aria-label="Close compare">✕</button></div>
+      <p class="help">Same start, different moves. Changed words and beats are highlighted. Clap for your favorites, out loud or here.</p>
+      <div class="cmp-add">
+        <textarea id="cmp-paste" rows="2" placeholder="Paste everyone's version links here (a whole group-chat dump works)"></textarea>
+        <div class="cp-row">
+          <button id="cmp-add" class="primary">Add versions</button>
+          <button id="cmp-copy" class="ghost">Copy compare link</button>
+          <button id="cmp-play" class="ghost">Play this challenge</button>
+        </div>
+      </div>
+      <p id="compare-empty" class="empty">Only the original so far. Paste the links your friends sent back.</p>
+      <div id="compare-cards" class="compare-cards"></div>
     </section>
 
     <section class="bank-wrap" aria-labelledby="bank-h">

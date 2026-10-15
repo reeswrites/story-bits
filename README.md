@@ -18,8 +18,10 @@ Live: https://reeswrites.com/story-bits/
 - **Length.** Start with just the bit and add a stanza at a time, up to five. Earlier lines stay put, so the story grows instead of rerolling. From two stanzas on, it always lands.
 - **Incongruity, in pairs.** Each card brings a pair that can fit or clash: event ↔ feeling (mood), place ↔ event and thing ↔ place (register). *Plausible* = none clash, *Odd* = only the feeling, *Absurd* = all. Then the story lands somewhere safe, because a funny story is an incongruity that resolves into something it's OK to laugh at.
 - **Nesting.** Some words hold a whole thing (*blames …*, *run by …*, *that once swallowed …*), tunable the same way, up to two levels down (`MAX_DEPTH`). Hovering a word outlines the phrase it belongs to.
+- **Beats.** The rest of each sentence is tunable too: tap the plain part of a story sentence to step that beat (*the turn*, *the landing*…) plain to strange, pin it, or send it back to the dice. Forms live in `FORMS` in `data.js`.
+- **Challenge friends.** *Challenge friends* makes a link: everyone gets the same story and the same few moves (a move is any word or beat that differs from the start; putting it back refunds it). Each player copies their version link back to the group; *Compare* takes a pasted pile of links (a group-chat dump works), shows every version against the original with changes highlighted, and lets the room clap-vote. *Copy compare link* shares the whole set. No server: every copy is a link (`#c=` challenge, `#p=` in progress, `#s=` finished, `#cmp=` a set).
 - **The cast.** Keep a bit and its character joins your cast; tell more stories about them and they become someone.
-- **Links.** The URL carries every word (yours included), the dial, the length, the seed and your pins.
+- **Links.** The URL carries every word (yours included), the form, tuned beats, the dial, the length, the seed and your pins. Links are versioned (`v: 2`); older links still load.
 
 ## The grammar
 

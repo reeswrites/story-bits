@@ -191,7 +191,7 @@ const pron = (t, who) => t.replace(/\{(\w+)\}/g, (m, k) => (k in PRONOUN_KEYS ? 
 // in the clause.
 function tokens(schema, ph, who, slot, path = [], ghosts = false) {
   const sel = state.sel;
-  const ghostHere = ghosts && sel && sel.slot === slot && same(sel.path.slice(0, -1), path);
+  const ghostHere = ghosts && !state.view && sel && sel.slot === slot && same(sel.path.slice(0, -1), path);
   const out = [];
   for (const p of SCHEMAS[schema].parts) {
     const at = [...path, p.k];
@@ -238,6 +238,7 @@ function tokHtml(toks, slot, capFirst) {
     if (first) { s = cap(s); first = false; }
     if (t.text !== undefined) return `<span class="plain">${esc(s)}</span>`;
     const p = t.path.join(".");
+    if (state.view) return `<span class="w${viewChanged(`${slot}|${p}`) ? " changed" : ""}">${esc(s)}</span>`;
     const pinned = state.pins.includes(`${slot}|${p}`);
     const sel = state.sel && state.sel.slot === slot && same(state.sel.path, t.path);
     return `<button class="word${pinned ? " pinned" : ""}${sel ? " sel" : ""}" data-slot="${slot}" data-path="${p}" aria-label="${esc(s)}: tune the ${t.part.name}${pinned ? " (pinned)" : ""}">${esc(s)}</button>`;
@@ -326,6 +327,7 @@ function story(ctx) {
   const sel = state.sel && state.sel.beat;
   return stanza().paras.map((keys) => keys.map((key) => {
     const line = beatLines(key, ctx)[choice[key]];
+    if (state.view) return `<span class="beat-s${viewChanged(`beat|${key}`) ? " changed" : ""}">${fill(line.t, ctx)}</span>`;
     const pinned = state.pins.includes(`beat|${key}`);
     return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}" tabindex="0" role="button" aria-label="Tune ${esc(beatGroup(key).name)}">${fill(line.t, ctx)}</span>`;
   }).join(" "));
@@ -520,7 +522,7 @@ function renderBeatPicker(el, key) {
     <p class="pk-keys">← plainer · stranger →</p>
     <div class="pk-actions">
       <button data-act="surprise">Surprise me</button>
-      <button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>
+      ${state.game ? (selChanged() ? `<button data-act="putback">Put back</button>` : "") : `<button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>`}
       ${Number.isInteger(state.beats[key]) ? `<button data-act="untune">Back to the dice</button>` : ""}
     </div>
     <div class="pk-list">${groups}</div>`;
@@ -566,7 +568,7 @@ function renderPicker() {
     <p class="pk-keys">← plainer · stranger →</p>
     <div class="pk-actions">
       <button data-act="surprise">Surprise me</button>
-      <button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>
+      ${state.game ? (selChanged() ? `<button data-act="putback">Put back</button>` : "") : `<button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>`}
       ${part.opt ? `<button data-act="remove">Remove</button>` : ""}
     </div>
     <div class="pk-list">${groups}</div>
@@ -700,17 +702,29 @@ function validPhrase(schema, ph, depth) {
 function snapshot() {
   return { v: 2, f: state.form, p: state.pick, d: state.dial, s: state.seed, l: state.len, b: state.beats, pn: state.pins };
 }
-// Load a snapshot into state if it's valid. v1 links (no form, no beats) still load.
-function loadSnapshot(x) {
+// Check a snapshot from a link and normalize it, or return null. v1 links (no form, no beats) still load.
+function parseSnapshot(x) {
   const { p, d, s, l, pn = [], f = "bit", b = {} } = x || {};
-  if (!FORMS[f] || ![0, 1, 2].includes(d) || !Number.isInteger(s)) return false;
-  if (!Number.isInteger(l) || l < 1 || l > FORMS[f].stanzas.length) return false;
-  if (!p || !SLOTS.every((x) => validPhrase(x.key, p[x.key], 0))) return false;
+  if (!FORMS[f] || ![0, 1, 2].includes(d) || !Number.isInteger(s)) return null;
+  if (!Number.isInteger(l) || l < 1 || l > FORMS[f].stanzas.length) return null;
+  if (!p || !SLOTS.every((x) => validPhrase(x.key, p[x.key], 0))) return null;
   const beats = b && typeof b === "object" ? Object.fromEntries(Object.entries(b).filter(([k, i]) => FORMS[f].beats[k] && Number.isInteger(i) && i >= 0)) : {};
-  Object.assign(state, { pick: p, dial: d, seed: s || 1, len: l, form: f, beats, pins: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [] });
-  return true;
+  return { v: 2, f, p, d, s: s || 1, l, b: beats, pn: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [] };
+}
+// Put a (parsed) snapshot into state.
+function applySnapshot(x) {
+  Object.assign(state, { pick: clone(x.p), dial: x.d, seed: x.s, len: x.l, form: x.f, beats: { ...x.b }, pins: [...x.pn] });
+}
+function loadSnapshot(x) {
+  const snap = parseSnapshot(x);
+  if (snap) applySnapshot(snap);
+  return !!snap;
 }
 function toHash() {
+  // Mid-challenge, the link holds the challenge and your copy, so a reload picks up where you were.
+  if (state.game) return "#p=" + b64(JSON.stringify(playPayload()));
+  // Comparing (and not playing): keep the set of versions in the link.
+  if (state.compare) return "#cmp=" + b64(JSON.stringify({ c: state.compare.c, e: state.compare.entries.map((e) => ({ name: e.name, me: e.me })) }));
   return "#" + b64(JSON.stringify(snapshot()));
 }
 function fromHash(h) {
@@ -753,10 +767,210 @@ async function loadPacks() {
   } catch {}
 }
 
+
+// ---------- the friends game: same bit, a few moves, compare ----------
+// A challenge is a starting story plus a move budget. Everyone tunes their own copy; a move is
+// any word or beat that differs from the start, so putting one back gives the move back. Then
+// the copies go side by side, changes highlighted, and the room votes. No server: every copy
+// is a link. Link kinds: #c= challenge, #p= a copy in progress, #s= a finished copy,
+// #cmp= a set of copies to compare.
+const NAME_MAX = 24;
+const cleanName = (n) => cleanWord(n).slice(0, NAME_MAX);
+function hashStr(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
+}
+const challengeId = (c) => hashStr(JSON.stringify(c.s));
+const linkTo = (kind, payload) => `${location.origin}${location.pathname}#${kind}=${b64(JSON.stringify(payload))}`;
+
+// The current story with every beat in play written down, so every copy tells the same story.
+function fixedSnapshot() {
+  const snap = clone(snapshot());
+  snap.b = { ...beatChoices(context()) };
+  snap.pn = [];
+  return snap;
+}
+const playPayload = () => ({ c: state.game.c, me: fixedSnapshot(), name: state.game.name });
+
+function parseChallenge(c) {
+  if (!c || typeof c !== "object") return null;
+  const start = parseSnapshot(c.s);
+  if (!start || !Number.isInteger(c.n) || c.n < 1 || c.n > 9) return null;
+  return { h: cleanName(c.h), n: c.n, s: start };
+}
+// A copy of a challenge: { c, me, name }.
+function parseCopy(x) {
+  const c = parseChallenge(x && x.c);
+  const me = c && parseSnapshot(x.me);
+  if (!me || me.f !== c.s.f || me.l !== c.s.l) return null;
+  return { c, me, name: cleanName(x.name) };
+}
+
+function diffPhrase(schema, a, b, path = [], out = []) {
+  for (const k of new Set([...Object.keys(a.w), ...Object.keys(b.w)])) {
+    const at = [...path, k];
+    if (!same(a.w[k], b.w[k])) out.push(at.join("."));
+    else if (a.sub?.[k] && b.sub?.[k]) diffPhrase("thing", a.sub[k], b.sub[k], at, out);
+  }
+  return out;
+}
+// Every change from the start: "slot|path" for words, "beat|key" for beats. One change, one move.
+function changes(start, snap) {
+  const out = [];
+  for (const sl of SLOTS) for (const p of diffPhrase(sl.key, start.p[sl.key], snap.p[sl.key])) out.push(`${sl.key}|${p}`);
+  for (const k of Object.keys(start.b)) if (snap.b[k] !== start.b[k]) out.push(`beat|${k}`);
+  return out;
+}
+const movesUsed = () => changes(state.game.c.s, fixedSnapshot()).length;
+
+function startGame(c, me = c.s, name = "") {
+  applySnapshot(me);
+  state.pins = [];
+  state.sel = null;
+  state.game = { c, name, good: null };
+  document.body.classList.add("in-game");
+  $("#challenge-panel").hidden = true;
+  render();
+}
+function leaveGame() {
+  state.game = null;
+  document.body.classList.remove("in-game");
+  render();
+}
+// Put one word or beat back the way the challenge started.
+function putBack() {
+  const s = state.sel;
+  const start = state.game.c.s;
+  if (s.beat) { setBeat(s.beat, start.b[s.beat]); return; }
+  const at = locate(s.slot, start.p[s.slot], s.path);
+  if (at && at.k in at.ph.w) {
+    const top = clone(state.pick[s.slot]);
+    const here = locate(s.slot, top, s.path);
+    here.ph.w[here.k] = clone(at.ph.w[here.k]);
+    if (at.ph.sub?.[here.k]) { here.ph.sub = here.ph.sub || {}; here.ph.sub[here.k] = clone(at.ph.sub[here.k]); } else if (here.ph.sub) delete here.ph.sub[here.k];
+    tidy(at.schema, here.ph);
+    state.pick[s.slot] = top;
+    render();
+  } else removeWord(s.slot, s.path);
+}
+// Is the selected word or beat different from the start?
+function selChanged() {
+  if (!state.game || !state.sel) return false;
+  const key = state.sel.beat ? `beat|${state.sel.beat}` : `${state.sel.slot}|${state.sel.path.join(".")}`;
+  return changes(state.game.c.s, fixedSnapshot()).some((c) => c === key || key.startsWith(c + "."));
+}
+
+function renderGameBar() {
+  const bar = $("#game-bar");
+  if (!state.game) { bar.hidden = true; return; }
+  const { c, name } = state.game;
+  const used = movesUsed();
+  bar.hidden = false;
+  bar.innerHTML = `
+    <div class="gb-top">
+      <p class="gb-title"><span class="eyebrow">Challenge${c.h ? ` from ${esc(c.h)}` : ""}</span>
+        Make it yours in <b>${c.n}</b> move${c.n === 1 ? "" : "s"}. Any word or beat you change is a move; put it back to get the move back.</p>
+      <div class="gb-moves" aria-label="${used} of ${c.n} moves used">${Array.from({ length: c.n }, (_, i) => `<span class="${i < used ? "on" : ""}"></span>`).join("")}<b>${used}/${c.n}</b></div>
+    </div>
+    <div class="gb-row">
+      <label class="gb-name"><span class="dial-label">Your name</span><input id="gb-name" maxlength="${NAME_MAX}" value="${esc(name)}" placeholder="so they know it's you"></label>
+      <button id="gb-submit" class="primary">Copy my version</button>
+      <button id="gb-compare" class="ghost">Compare versions</button>
+      <button id="gb-leave" class="ghost subtle">Leave challenge</button>
+    </div>`;
+}
+
+// ----- compare -----
+// state.compare = { c, entries: [{ name, me, votes }] }
+function openCompare(c, entries = []) {
+  state.compare = { c, entries: [] };
+  addEntries(entries);
+  $("#compare").hidden = false;
+  renderCompare();
+  $("#compare").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function addEntries(entries) {
+  const cmp = state.compare;
+  let added = 0, other = 0;
+  for (const e of entries) {
+    if (challengeId(e.c) !== challengeId(cmp.c)) { other++; continue; }
+    const key = JSON.stringify(e.me) + e.name;
+    if (cmp.entries.some((x) => JSON.stringify(x.me) + x.name === key)) continue;
+    cmp.entries.push({ name: e.name, me: e.me, votes: 0 });
+    added++;
+  }
+  if (other) toast(`${other} link${other === 1 ? " was" : "s were"} from a different challenge.`);
+  return added;
+}
+// Pull every copy link out of pasted text (a group chat dump works).
+function linksIn(text) {
+  const out = [];
+  for (const m of text.matchAll(/#(s|p|cmp)=([A-Za-z0-9_-]+)/g)) {
+    try {
+      const x = JSON.parse(unb64(m[2]));
+      if (m[1] === "cmp") { const c = parseChallenge(x.c); if (c) for (const e of x.e || []) { const cp = parseCopy({ c: x.c, me: e.me, name: e.name }); if (cp) out.push(cp); } }
+      else { const cp = parseCopy(x); if (cp) out.push(cp); }
+    } catch {}
+  }
+  return out;
+}
+
+// Render any snapshot as static text, with changed words and beats marked.
+function staticHtml(snap, changed) {
+  const saved = { pick: state.pick, dial: state.dial, seed: state.seed, len: state.len, form: state.form, beats: state.beats, pins: state.pins, sel: state.sel };
+  applySnapshot(snap);
+  state.pins = [];
+  state.sel = null;
+  state.view = new Set(changed);
+  try {
+    const ctx = context();
+    return `<p class="bit">${bitHtml(ctx)}</p><div class="story">${story(ctx).map((p) => `<p>${p}</p>`).join("")}</div>`;
+  } finally {
+    Object.assign(state, saved);
+    state.view = null;
+  }
+}
+const viewChanged = (key) => {
+  for (const c of state.view) if (key === c || key.startsWith(c + ".")) return true;
+  return false;
+};
+
+function renderCompare() {
+  const el = $("#compare-cards");
+  const cmp = state.compare;
+  if (!cmp) return;
+  if (!state.game) history.replaceState(null, "", toHash());
+  const top = Math.max(0, ...cmp.entries.map((e) => e.votes));
+  const original = `<article class="version original"><header><h3>The original</h3><span class="count">${esc(cmp.c.h ? `from ${cmp.c.h}` : "start")}</span></header>${staticHtml(cmp.c.s, [])}</article>`;
+  el.innerHTML = original + cmp.entries.map((e, i) => {
+    const ch = changes(cmp.c.s, e.me);
+    return `<article class="version${top > 0 && e.votes === top ? " leading" : ""}">
+      <header><h3>${esc(e.name || `Player ${i + 1}`)}</h3><span class="count">${ch.length} move${ch.length === 1 ? "" : "s"}</span></header>
+      ${staticHtml(e.me, ch)}
+      <div class="vote"><button class="clap" data-clap="${i}" aria-label="Clap for ${esc(e.name || `player ${i + 1}`)}">👏 <b>${e.votes}</b></button>${top > 0 && e.votes === top ? `<span class="crown">leading</span>` : ""}</div>
+    </article>`;
+  }).join("");
+  $("#compare-empty").hidden = cmp.entries.length > 0;
+}
+function compareLink() {
+  const cmp = state.compare;
+  return linkTo("cmp", { c: cmp.c, e: cmp.entries.map((e) => ({ name: e.name, me: e.me })) });
+}
+
 // ---------- render ----------
 const $ = (s) => document.querySelector(s);
 
 function render() {
+  // In a challenge, a change past the move budget is undone.
+  if (state.game) {
+    if (movesUsed() > state.game.c.n && state.game.good) {
+      state.pick = clone(state.game.good.pick);
+      state.beats = { ...state.game.good.beats };
+      toast(`That would be move ${state.game.c.n + 1} of ${state.game.c.n}. Put something back first.`);
+    }
+    state.game.good = { pick: clone(state.pick), beats: { ...state.beats } };
+  }
   // Drop pins and selection that point at words which no longer exist.
   state.pins = state.pins.filter((key) => {
     const [slot, p] = key.split("|");
@@ -771,6 +985,7 @@ function render() {
   $("#legend").innerHTML = SLOTS.filter((s) => inPlay.includes(s.key)).map((s) =>
     `<button class="chip b-${s.key}" data-roll="${s.key}" title="Reroll ${s.hint}, keeping pinned words">${s.label} <span aria-hidden="true">↻</span></button>`).join("");
 
+  renderGameBar();
   $("#bit").innerHTML = bitHtml(ctx);
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
 
@@ -906,6 +1121,7 @@ document.addEventListener("click", (e) => {
     if (act === "close") { state.sel = null; render(); }
     else if (act === "prev") step(-1);
     else if (act === "next") step(1);
+    else if (act === "putback") putBack();
     else if (s.beat) {
       if (act === "surprise") surpriseBeat(s.beat);
       else if (act === "pin") togglePin("beat", [s.beat]);
@@ -935,6 +1151,25 @@ document.addEventListener("click", (e) => {
   else if (t.id === "shuffle") reroll(SLOTS.map((x) => x.key));
   else if (t.id === "retell") retell();
   else if (t.id === "keep") keepBit();
+  else if (t.id === "challenge") { const pnl = $("#challenge-panel"); pnl.hidden = !pnl.hidden; if (!pnl.hidden) $("#ch-name").focus(); }
+  else if (t.id === "ch-copy" || t.id === "ch-play") {
+    const c = { h: cleanName($("#ch-name").value), n: +document.querySelector('[name="ch-n"]:checked').value, s: fixedSnapshot() };
+    if (t.id === "ch-copy") copy(linkTo("c", c), `Challenge copied. Everyone gets the same bit and ${c.n} move${c.n === 1 ? "" : "s"}.`);
+    else startGame(parseChallenge(c), undefined, c.h);
+  }
+  else if (t.id === "gb-submit") copy(linkTo("s", playPayload()), "Your version is copied. Paste it in the group chat.");
+  else if (t.id === "gb-compare") { const me = playPayload(); openCompare(state.game.c, [parseCopy(me)].filter(Boolean)); }
+  else if (t.id === "gb-leave") leaveGame();
+  else if (t.id === "cmp-add") {
+    const n = addEntries(linksIn($("#cmp-paste").value));
+    $("#cmp-paste").value = "";
+    toast(n ? `Added ${n} version${n === 1 ? "" : "s"}.` : "No new versions in that text.");
+    renderCompare();
+  }
+  else if (t.id === "cmp-copy") copy(compareLink(), "Compare link copied. Everyone who opens it sees all the versions.");
+  else if (t.id === "cmp-play") startGame(state.compare.c, undefined, "");
+  else if (t.id === "cmp-close") { state.compare = null; $("#compare").hidden = true; render(); }
+  else if (t.dataset.clap !== undefined) { state.compare.entries[+t.dataset.clap].votes++; renderCompare(); }
   else if (t.id === "share") copy(location.href, "Link copied. Same words, same story.");
   else if (t.id === "bank-share") copy(packLink(), "Pack link copied. Whoever opens it gets your words in their bank.");
   else if (t.id === "bank-suggest") {
@@ -959,6 +1194,12 @@ document.addEventListener("submit", (e) => {
     renderBank();
     updateBankForm();
     render();
+  }
+});
+document.addEventListener("input", (e) => {
+  if (e.target instanceof Element && e.target.id === "gb-name" && state.game) {
+    state.game.name = cleanName(e.target.value);
+    history.replaceState(null, "", toHash());
   }
 });
 const inBankForm = (e) => e.target instanceof Element && e.target.closest("#bank-form");
@@ -1000,6 +1241,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape" && typing && state.sel) { state.sel = null; render(); return; }
   if (typing) return;
+  if (state.game && [" ", "r", "+", "=", "]", "-", "["].includes(e.key)) return;
   if (e.key === " " && !target.closest("button")) { e.preventDefault(); state.sel = null; reroll(SLOTS.map((x) => x.key)); }
   else if (e.key === "r") retell();
   else if (e.key === "k") keepBit();
@@ -1013,8 +1255,18 @@ addEventListener("resize", () => state.sel && positionPicker());
   await loadPacks();
   cast = loadCast();
   const h = location.hash.slice(1);
-  if (h.startsWith("pack=")) importPack(h.slice(5));
-  if (h.startsWith("pack=") || !fromHash(h)) {
+  const [kind, data] = h.includes("=") ? [h.slice(0, h.indexOf("=")), h.slice(h.indexOf("=") + 1)] : ["", h];
+  const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };
+  let ready = false;
+  if (kind === "pack") importPack(data);
+  else if (kind === "c") { const c = parseChallenge(read()); if (c) { startGame(c); ready = true; } }
+  else if (kind === "p") { const cp = parseCopy(read()); if (cp) { startGame(cp.c, cp.me, cp.name); ready = true; } }
+  else if (kind === "s" || kind === "cmp") {
+    const copies = linksIn("#" + h);
+    if (copies.length) { applySnapshot(copies[0].c.s); state.pins = []; ready = true; queueMicrotask(() => openCompare(copies[0].c, copies)); }
+  }
+  else ready = fromHash(h);
+  if (!ready) {
     for (const s of SLOTS) state.pick[s.key] = randomPhrase(s.key);
     state.seed = 1 + rand(1e9);
     // Settle the pairs under the dial before the first render.
