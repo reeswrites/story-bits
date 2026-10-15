@@ -224,7 +224,7 @@ function tokens(schema, ph, who, slot, path = [], ghosts = false) {
       const [before, after] = text.split(`{${inner}}`);
       // A word that is only a nested card still gets a handle, so it can be tuned.
       out.push({ word: before.trim(), part: p, path: at });
-      out.push({ group: tokens(inner, ph.sub[p.k], who, slot, at, ghosts), path: at });
+      out.push({ group: tokens(inner, ph.sub[p.k], who, slot, at, ghosts), path: at, card: inner });
       if (after.trim()) out.push({ text: after.trim() });
     } else out.push({ word: text, part: p, path: at });
   }
@@ -256,7 +256,7 @@ function tokHtml(toks, slot, capFirst) {
   return toks.map((t) => {
     if (t.ghost) return `<button class="ghost-slot" data-add="${slot}" data-path="${t.path.join(".")}" title="Add a ${esc(t.ghost.name)}">+ ${esc(t.ghost.name)}</button>`;
     if (t.group) {
-      const h = `<span class="ph nested">${tokHtml(t.group, slot, first)}</span>`;
+      const h = `<span class="ph nested" data-card="${esc(t.card || "")}">${tokHtml(t.group, slot, first)}</span>`;
       first = false;
       return h;
     }
@@ -273,7 +273,7 @@ function tokHtml(toks, slot, capFirst) {
   }).join(" ");
 }
 const phraseHtml = (slot, capFirst = false) =>
-  `<span class="ph top ${cardClass(slot)}">${tokHtml(tokens(slot, state.pick[slot], person(), slot, [], true), slot, capFirst)}</span>`;
+  `<span class="ph top ${cardClass(slot)}" data-card="${esc(slot)}">${tokHtml(tokens(slot, state.pick[slot], person(), slot, [], true), slot, capFirst)}</span>`;
 
 // Everything the headline and beats need: each card's text, the pronouns, and the mood that
 // picks by-mood beat lines.
@@ -309,6 +309,11 @@ const fillText = (tpl, ctx) => fillWith(tpl, ctx, (k, c) => (c ? cap(ctx.text[k]
 // The headline: the grammar's line ("{who} {what}, and {p} {is} {feel}.").
 const bitLine = (ctx) => fillText(G.line, ctx);
 const bitHtml = (ctx) => fill(G.line, ctx);
+
+// A reload of a plain piece link starts a fresh piece; anything else opens exactly as linked.
+// navType is the Navigation Timing type ("navigate", "reload", "back_forward"); hash has no "#".
+// Jams, challenges, copies, compares, grammars, spaces, packs and #daily always open as they are.
+const freshOnReload = (navType, hash) => navType === "reload" && !!hash && !hash.includes("=") && hash !== "daily";
 
 // ---------- beats ----------
 const beatGroup = (key) => form().beats[key];

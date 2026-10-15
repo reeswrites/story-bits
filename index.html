@@ -57,6 +57,7 @@
       </div>
       <p id="dial-note" class="dial-note"></p>
       <ul id="pairs" class="pairs" aria-label="Pairs in play"></ul>
+      <label class="parts-toggle"><input type="checkbox" id="show-parts"> Show parts <span class="menu-note">label each part of the headline (who, what happened…)</span></label>
       <div class="reroll-row">
         <span class="dial-label">Reroll one card</span>
         <div id="legend" class="legend" role="group" aria-label="Reroll a card"></div>
@@ -179,7 +180,8 @@
     </footer>
   </main>
   <div id="picker" class="picker" role="dialog" aria-labelledby="pk-title" tabindex="-1" hidden></div>
-  <div id="first-hint" class="first-hint" role="note" hidden><span>Tap any word to tune it</span><button class="fh-x" aria-label="Dismiss hint">✕</button></div>
+  <div id="first-hint" class="first-hint" role="note" hidden><span>tap to change</span><button class="fh-x" aria-label="Dismiss hint">✕</button></div>
+  <div id="back-offer" class="back-offer" role="status" hidden><span>New piece.</span> <button id="back-last">Back to your last piece</button></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="data.js"></script>

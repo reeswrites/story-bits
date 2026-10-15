@@ -74,7 +74,7 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
 .ph { -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 4px; }
 .ph.top { padding: 0 .12em; }
 .ph.nested {
-  background: color-mix(in srgb, var(--thing) 50%, var(--card));
+  background: color-mix(in srgb, var(--thing) 35%, var(--card));
   border: 1px dashed color-mix(in srgb, var(--ink) 40%, transparent);
   padding: 0 .1em;
 }
@@ -262,15 +262,17 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
 }
 .eyebrow { margin: 0 0 6px; color: var(--accent-text); }
 .story:empty { display: none; }
-.bit { font-size: clamp(22px, 3.4vw, 30px); line-height: 1.3; margin: 0 0 24px; font-weight: 600; letter-spacing: -0.01em; }
+.bit { --fs: clamp(22px, 3.4vw, 30px); font-size: var(--fs); line-height: 1.3; margin: 0 0 24px; font-weight: 600; letter-spacing: -0.01em; }
 .story p { margin: 0 0 14px; }
 mark { color: inherit; padding: 0 .15em; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.b-who, .k0 { background: var(--who); }
-.b-what, .k1 { background: var(--what); }
-.b-feel, .k2 { background: var(--feel); }
-.b-where, .k3 { background: var(--where); }
-.b-thing, .k4 { background: var(--thing); }
+/* Card fills are muted toward the page; text on them stays 6.9:1 or better in light and dark. */
+.b-who, .k0 { background: color-mix(in srgb, var(--who) 55%, var(--card)); }
+.b-what, .k1 { background: color-mix(in srgb, var(--what) 55%, var(--card)); }
+.b-feel, .k2 { background: color-mix(in srgb, var(--feel) 55%, var(--card)); }
+.b-where, .k3 { background: color-mix(in srgb, var(--where) 55%, var(--card)); }
+.b-thing, .k4 { background: color-mix(in srgb, var(--thing) 55%, var(--card)); }
 .k5 { background: color-mix(in srgb, var(--accent) 35%, var(--card)); }
+.chip.k0, .chip.k1, .chip.k2, .chip.k3, .chip.k4, .chip.k5 { color: var(--ink); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 .actions button, .person-actions button {
@@ -476,7 +478,7 @@ body.verse .bit { font-weight: 500; font-style: italic; }
   font: 500 10px/1.6 "IBM Plex Mono", monospace; color: #fff; background: var(--peer); padding: 0 5px; border-radius: 3px; pointer-events: none;
 }
 /* A word or beat with open comments. */
-.noted { text-decoration: underline wavy color-mix(in srgb, var(--accent) 70%, transparent); text-underline-offset: 5px; }
+.noted, .word.noted { text-decoration: underline wavy color-mix(in srgb, var(--accent) 70%, transparent); text-underline-offset: 5px; }
 .word.noted::before { content: attr(data-notes); font: 500 9px "IBM Plex Mono", monospace; color: var(--on-accent); background: var(--accent); border-radius: 999px; padding: 0 4px; margin-right: 2px; vertical-align: .6em; }
 
 .jam-notes { margin-top: 10px; border-top: 1px dashed var(--rule); padding-top: 8px; }
@@ -623,4 +625,55 @@ details[open] > summary .caret { transform: rotate(90deg); }
 @media (max-width: 520px) {
   .menu-list { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; min-width: 0; max-width: none; }
   .actions .menu-list { bottom: 16px; }
+}
+
+/* ---- mad-lib blanks: every tunable word sits on a dotted line ---- */
+.word {
+  line-height: inherit;
+  text-decoration: underline dotted 2px color-mix(in srgb, var(--ink) 60%, transparent);
+  text-underline-offset: .22em; text-decoration-skip-ink: none;
+}
+.word.sel { text-decoration-color: var(--paper); }
+/* Part labels under the headline's phrases: shown on a first visit, then by choice. */
+.part-label {
+  position: absolute; transform: translateY(calc(var(--fs, 30px) * 1.22 + 15px)); margin-left: -.12em; pointer-events: none;
+  font: 500 9.5px/1.4 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ink-2); background: var(--card); border-radius: 3px; padding: 0 4px;
+  opacity: 0; transition: opacity .6s ease; font-style: normal; font-weight: 500;
+}
+.ph.nested > .part-label { text-transform: none; letter-spacing: .02em; }
+body.show-parts #bit { line-height: 1.95; }
+body.show-parts #bit .part-label { opacity: 1; }
+#bit .ph { position: static; }
+.bit { transition: line-height .4s ease; }
+.parts-toggle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 14px; font: 500 14px "IBM Plex Mono", monospace; cursor: pointer; }
+.parts-toggle input { width: 18px; height: 18px; accent-color: var(--accent); align-self: center; }
+.parts-toggle .menu-note { flex-basis: 100%; padding-left: 26px; }
+/* What the marks mean, in the picker. */
+.pk-marks { margin: 8px 0 0; font: 12px/1.5 "IBM Plex Mono", monospace; color: var(--ink-2); }
+.pk-marks span { color: var(--ink); }
+.mk-blank { text-decoration: underline dotted 2px color-mix(in srgb, var(--ink) 60%, transparent); text-underline-offset: 3px; }
+.mk-pin { text-decoration: underline 2px var(--accent); text-underline-offset: 3px; }
+.mk-note { text-decoration: underline wavy color-mix(in srgb, var(--accent) 70%, transparent); text-underline-offset: 3px; }
+.mk-peer { outline: 2px solid var(--ink-2); outline-offset: 1px; border-radius: 2px; }
+/* First visit: one headline word pulses gently. */
+.word.pulse { animation: word-pulse 1.8s ease-in-out infinite; }
+@keyframes word-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 35%, transparent); }
+}
+/* After a reload: the piece you had, offered back for a few seconds. */
+.back-offer {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px);
+  background: var(--ink); color: var(--paper); border-radius: 8px; padding: 6px 6px 6px 14px;
+  font: 14px "IBM Plex Mono", monospace; box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .5);
+}
+.back-offer button {
+  font: 500 14px "IBM Plex Mono", monospace; color: var(--ink); background: var(--paper);
+  border: 0; border-radius: 6px; padding: 8px 12px; min-height: 38px; cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .word.pulse { animation: none; outline: 3px solid var(--accent); outline-offset: 2px; }
+  .part-label, .bit { transition: none; }
 }

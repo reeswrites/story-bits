@@ -156,6 +156,7 @@ function renderBeatPicker(el, key) {
       ${Number.isInteger(state.beats[key]) ? `<button data-act="untune">Back to the dice</button>` : ""}
     </div>
     <div class="pk-list">${groups}</div>
+    ${marksHtml()}
     ${state.room ? jamPickerHtml(`beat|${key}`, fillText(line.t, ctx)) : ""}`;
   el.classList.toggle("readonly", !!state.room && jamReadOnly());
   el.hidden = false;
@@ -248,6 +249,7 @@ function drawPicker(el) {
       ${loreTarget() ? `<button data-act="lore" title="Keep the whole phrase in ${esc(loreTarget().name)}'s lore">Keep “${esc(phraseText(sel.slot).slice(0, 32))}” as lore</button>` : ""}
     </div>
     <div class="pk-list">${groups}</div>
+    ${marksHtml()}
     <form class="pk-own" autocomplete="off">
       <input name="own" maxlength="60" placeholder="Your own ${esc(part.name)}…" aria-label="Your own ${esc(part.name)}">
       <button type="submit">Use</button>
@@ -560,6 +562,7 @@ function histNote() {
   if (histNow.at.G === at.G && histNow.key === key) { renderUndo(); return; }
   if (!histQuiet && !state.room?.applying) {
     undoStack.push({ from: histNow.at, to: at });
+    if (state.sel) countTune();
     if (undoStack.length > HISTORY_MAX) undoStack.shift();
     redoStack.length = 0;
   }
@@ -645,8 +648,8 @@ function closeMenus(except) {
   document.querySelectorAll("details.menu[open]").forEach((d) => { if (d !== except) d.open = false; });
 }
 
-// The first time you open Story Bits, a hint points at a word. Tapping any word, or the ✕,
-// puts it away for good (in this browser).
+// The first time you open Story Bits, one headline word pulses gently under a "tap to change"
+// bubble. Tapping any word, or the ✕, puts it away for good (in this browser).
 const HINT_KEY = "story-bits-hint-seen";
 let hintOn = false;
 function showFirstHint() {
@@ -663,15 +666,80 @@ function hideFirstHint(forGood) {
 }
 function placeFirstHint() {
   const h = $("#first-hint");
+  document.querySelectorAll(".word.pulse").forEach((x) => x.classList.remove("pulse"));
   if (!hintOn || state.sel || state.game || state.room) { h.hidden = true; return; }
   const w = document.querySelector("#bit .word");
   if (!w) { h.hidden = true; return; }
+  w.classList.add("pulse");
   h.hidden = false;
   const r = w.getBoundingClientRect();
   const left = Math.max(16, Math.min(r.left + scrollX + r.width / 2 - 24, scrollX + document.documentElement.clientWidth - h.offsetWidth - 16));
   h.style.left = `${left}px`;
   h.style.top = `${r.top + scrollY - h.offsetHeight - 10}px`;
   h.style.setProperty("--arrow", `${Math.max(14, r.left + scrollX + r.width / 2 - left - 7)}px`);
+}
+
+// ---------- parts: the mad-lib labels ----------
+// Every tunable word sits on a dotted blank, like a Mad Libs page. In the headline, a small
+// label under each card's phrase names the part (from the grammar: WHO, WHAT HAPPENED; IMAGE,
+// PLACE), and nested phrases get one too ("thing, inside"). Labels show on a first visit and
+// fade once you've tuned a few words; Show parts (in Rules) turns them on or off for good.
+const PARTS_KEY = "story-bits-parts"; // "on" | "off" | absent (automatic)
+const TUNES_KEY = "story-bits-tunes";
+const PARTS_AFTER = 3;
+function store(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch {} }
+function stored(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function partsOn() {
+  const m = stored(PARTS_KEY);
+  if (m === "on" || m === "off") return m === "on";
+  return (+stored(TUNES_KEY) || 0) < PARTS_AFTER;
+}
+function countTune() {
+  const n = (+stored(TUNES_KEY) || 0) + 1;
+  if (n <= PARTS_AFTER + 1) store(TUNES_KEY, String(n));
+  if (n === PARTS_AFTER) renderParts();
+}
+function renderParts() {
+  const on = partsOn();
+  document.body.classList.toggle("show-parts", on);
+  const box = $("#show-parts");
+  if (box) box.checked = on;
+}
+// Labels go in as the first child of each phrase, so they sit under where the phrase starts,
+// even when it wraps. They're aria-hidden: each word's name already says its part.
+function labelParts(root) {
+  root.querySelectorAll(".ph[data-card]").forEach((ph) => {
+    const card = SLOTS.find((c) => c.key === ph.dataset.card);
+    if (!card) return;
+    const l = document.createElement("span");
+    l.className = "part-label";
+    l.setAttribute("aria-hidden", "true");
+    l.textContent = ph.classList.contains("nested") ? `${card.label.toLowerCase()}, inside` : card.label;
+    ph.prepend(l);
+  });
+}
+// What the marks on words mean, at the foot of the picker.
+const marksHtml = () => `<p class="pk-marks"><span class="mk-blank">dotted</span> can change · <span class="mk-pin">underlined</span> pinned${state.room ? ` · <span class="mk-note">wavy</span> has a comment · <span class="mk-peer">outlined</span> someone's on it` : ""}</p>`;
+
+// ---------- reload starts fresh ----------
+// Reloading a plain piece starts a new one (links opened any other way open exactly). The piece
+// you had is kept in this browser, and a button offers it back for a few seconds.
+const LAST_KEY = "story-bits-last-piece";
+let backTimer;
+function offerBack() {
+  const el = $("#back-offer");
+  el.hidden = false;
+  clearTimeout(backTimer);
+  backTimer = setTimeout(() => { if (!el.contains(document.activeElement)) el.hidden = true; else backTimer = setTimeout(() => (el.hidden = true), 5000); }, 10000);
+}
+function backToLast() {
+  $("#back-offer").hidden = true;
+  const h = stored(LAST_KEY);
+  if (!h || !fromHash(h)) { toast("That piece couldn't be opened."); return; }
+  state.sel = null;
+  renderBankForm(); renderBank(); renderCast(); renderLibrary();
+  render();
+  $("#shuffle").focus({ preventScroll: true });
 }
 
 // ---------- render ----------
@@ -705,6 +773,7 @@ function render() {
   renderGameBar();
   document.body.classList.toggle("verse", !!form().lines);
   $("#bit").innerHTML = bitHtml(ctx);
+  labelParts($("#bit"));
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
 
   $("#grammar-pick").innerHTML = grammarOptions();
@@ -924,7 +993,8 @@ document.addEventListener("click", (e) => {
   if (t.classList.contains("word")) { select(t.dataset.slot, pathOf(t), t); return; }
   if (t.dataset.beatBtn) { selectBeat(t.dataset.beatBtn); return; }
   if (t.dataset.foldBtn) { setDrawer(t, t.getAttribute("aria-expanded") !== "true"); return; }
-    if (t.id === "undo") { undo(); return; }
+    if (t.id === "back-last") { backToLast(); return; }
+  if (t.id === "undo") { undo(); return; }
   if (t.id === "redo") { redo(); return; }
   if (t.classList.contains("fh-x")) { hideFirstHint(true); return; }
   if (t.dataset.add) { addWord(t.dataset.add, pathOf(t)); return; }
@@ -1003,6 +1073,7 @@ document.addEventListener("input", (e) => {
 const inBankForm = (e) => e.target instanceof Element && e.target.closest("#bank-form");
 document.addEventListener("input", (e) => { if (inBankForm(e)) updateBankForm(); });
 document.addEventListener("change", (e) => {
+  if (e.target instanceof Element && e.target.id === "show-parts") { store(PARTS_KEY, e.target.checked ? "on" : "off"); renderParts(); return; }
   if (inBankForm(e)) updateBankForm();
   else if (e.target instanceof Element && e.target.id === "grammar-pick") {
     const m = /^@([A-Z0-9]{8})\/(.+)$/.exec(e.target.value);
@@ -1079,6 +1150,7 @@ addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHi
 // ---------- boot ----------
 (async function boot() {
   initFolds();
+  renderParts();
   await loadPacks();
   cast = loadCast();
   const h = location.hash.slice(1);
@@ -1111,7 +1183,18 @@ addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHi
     const copies = linksIn("#" + h);
     if (copies.length) { applySnapshot(copies[0].c.s); state.pins = []; ready = true; queueMicrotask(() => openCompare(copies[0].c, copies)); }
   }
-  else ready = fromHash(h);
+  else {
+    ready = fromHash(h);
+    // A reload of a plain piece: keep it for "Back to your last piece", then start a new one in
+    // the same grammar, form, length and dial.
+    const nav = performance.getEntriesByType?.("navigation")?.[0]?.type;
+    if (ready && freshOnReload(nav, h)) {
+      store(LAST_KEY, h);
+      Object.assign(state, { pins: [], beats: {}, sel: null });
+      ready = false;
+      queueMicrotask(offerBack);
+    }
+  }
   if (!ready) {
     for (const s of SLOTS) state.pick[s.key] = randomPhrase(s.key);
     state.seed = 1 + rand(1e9);

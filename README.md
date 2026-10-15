@@ -10,7 +10,13 @@ Story Bits began with one rule for funny stories, from a note: *something happen
 
 ## The page
 
-It opens calm: the piece, one hint (*tap any word*), and **Shuffle**. The first time, a hint points at a word. Everything else is one step away:
+It opens calm: the piece, one hint (*tap any word*), and **Shuffle**. The first time, one headline word pulses gently under a *tap to change* bubble. Everything else is one step away.
+
+**Mad-lib blanks.** Every word you can change sits on a dotted line, like the blank on a Mad Libs page. Each card keeps its own (muted) color, and in the headline a small label under each phrase names the part from the grammar (*Who*, *What happened*, *How they feel*; *Image*, *Motion*, *Place*, *Time*), with *thing, inside* for a nested phrase. Labels show on a first visit and fade after a few tunes; **Show parts** in Rules turns them on or off. Pins, comments and someone else's cursor keep their own marks; the picker says what each mark means.
+
+**Reload starts fresh.** Reloading a plain piece link makes a new piece in the same grammar, form, length and dial; the one you had is kept, and **Back to your last piece** offers it for ten seconds. A link opened any other way opens exactly, and jams, challenges, copies, compares, grammars, spaces, packs and today's bit never change on reload.
+
+Everything else:
 
 - **Rules** (above the piece) holds the grammar, form, length, the dial, the pairs it clashes, and *Reroll one card*.
 - **With others** has *Start a jam*, *Pass it around* and *Today's bit*.
@@ -87,7 +93,7 @@ Your spaces and their keys are listed in this browser only. Every client checks 
 
 ## What's stored
 
-- **In your browser** (localStorage): your grammars, word bank, cast, nickname, the list of spaces you've joined with their invite keys, and which sections are open (and whether you've seen the first-run hint). Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
+- **In your browser** (localStorage): your grammars, word bank, cast, nickname, the list of spaces you've joined with their invite keys, which sections are open, whether you've seen the first-run hint, whether part labels show (and how many words you've tuned, up to a few), and the piece you had before your last reload. Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
 - **In a jam** (its own storage on Cloudflare): the shared piece, comments (with nicknames), finished workshop rounds (the start, each copy, notes, claps; up to 50), and, if it's in a space, that space's id and name and a copy of its grammars, lore and cast. How long it's kept is the host's call: a month or a year after it's last used, or until the host deletes it (a year by default). The host can wipe its history and comments, or delete the whole jam, any time.
 - **In a space** (its own storage on Cloudflare): its name and keys, grammars (every version), word packs, kept pieces, cast, lore, comments (with nicknames), and a summary of each linked jam's rounds (names and winners). Up to 6 MB. How long it's kept is the owner's call: **until they delete it** (the default), or a year or a month after it's last used; choosing a time asks first, and the space shows the date it would go, highlighted near the end. The owner can delete it any time, and export it first.
 
