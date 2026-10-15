@@ -105,10 +105,16 @@ Publishing is a public space now. The GitHub route below is only for curating wh
 
 ## Run it
 
-No build step. Plain HTML/CSS/JS: `data.js` (built-in grammars), `grammar.js` (checks), `library.js`, `jam.js`, `spaces.js`, `app.js`.
+No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), then the page: `library.js`, `jam.js`, `spaces.js`, `app.js`.
 
 ```bash
 python3 -m http.server 4290
+```
+
+Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js` and `engine.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints, v1–v4 link round-trips, `checkGrammar`, nested phrases and escaping. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
+
+```bash
+node --test test/*.test.mjs
 ```
 
 Jams and spaces run on `party/`, a [partyserver](https://github.com/cloudflare/partykit/tree/main/packages/partyserver) Durable Object (Cloudflare's successor to PartyKit):

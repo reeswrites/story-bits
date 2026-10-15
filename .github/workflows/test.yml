@@ -1,0 +1,26 @@
+# Engine tests and a syntax check on every push and pull request. The party/ end-to-end tests
+# need a running room server, so they stay local (cd party && npm test).
+name: Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax check every script
+        run: git ls-files '*.js' '*.mjs' | xargs -n1 node --check
+
+      - name: Engine tests
+        run: node --test test/*.test.mjs
