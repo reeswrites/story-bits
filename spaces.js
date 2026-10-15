@@ -23,9 +23,11 @@ async function fetchVersion(sp, gid, ver) {
   const mine = spaces.list.find((s) => s.id === sp);
   try {
     // Keys go in a POST body, never the URL; a public space answers a plain GET.
-    const res = mine?.k
+    let res = mine?.k
       ? await fetch(spaceUrl(sp), { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ op: "gv", gv: `${gid}@${ver}`, k: mine.k }) })
       : await fetch(`${spaceUrl(sp)}?${new URLSearchParams({ gv: `${gid}@${ver}` })}`);
+    // A room server from before the "gv" op: ask the old way.
+    if (res.status === 400 && mine?.k) res = await fetch(`${spaceUrl(sp)}?${new URLSearchParams({ gv: `${gid}@${ver}`, k: mine.k })}`);
     if (!res.ok) return null;
     const out = await res.json();
     // Without a key, a space only answers if it's public.
