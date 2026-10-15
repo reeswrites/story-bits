@@ -1,0 +1,45 @@
+# Grows the shared word bank. Someone suggests words from the site ("Suggest for everyone"),
+# which opens an issue with a JSON block. When a maintainer adds the `accepted-pack` label,
+# this checks every word against the grammar and opens a pull request adding them as
+# packs/issue-<n>.json. Merging the PR publishes them to everyone.
+name: Word pack from issue
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  pack:
+    if: github.event.label.name == 'accepted-pack'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check words and write the pack
+        id: pack
+        env:
+          # Passed through the environment, never interpolated into the script.
+          BODY: ${{ github.event.issue.body }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: node tools/accept-pack.mjs
+
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: word-pack-${{ github.event.issue.number }}
+          commit-message: "Add word pack from #${{ github.event.issue.number }}"
+          title: "Add word pack from #${{ github.event.issue.number }}"
+          body: |
+            Adds ${{ steps.pack.outputs.count }} words suggested in #${{ github.event.issue.number }}. Every word passed the grammar check in `grammar.js`; see the workflow run summary for any that were skipped.
+
+            Closes #${{ github.event.issue.number }}
+          add-paths: packs/

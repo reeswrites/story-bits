@@ -15,13 +15,8 @@
   <main>
     <header class="masthead">
       <h1>Story Bits</h1>
-      <p class="lede">Something happened to someone, and they feel some way about it. You don't have to guess how they feel. That's the point. Build the bit card by card, then tune it word by word. Things can hide inside other things.</p>
+      <p class="lede">Something happened to someone, and they feel some way about it. You don't have to guess how they feel. That's the point. Tap any word to tune it, from plain to strange. Things can hide inside other things, and you can add words of your own.</p>
     </header>
-
-    <section aria-label="The five bits">
-      <div id="cards" class="cards"></div>
-      <p class="help">Click any word to tune just that word. − / + drop or add a word; ↻ rerolls the whole card; the lock keeps it. Dashed boxes are things nested inside a word, and they tune the same way.</p>
-    </section>
 
     <section class="controls" aria-label="Controls">
       <div class="control-row">
@@ -44,14 +39,47 @@
     </section>
 
     <section class="page" aria-label="The story">
-      <p class="eyebrow">The bit</p>
+      <div class="page-top">
+        <p class="eyebrow">The bit</p>
+        <div id="legend" class="legend" role="group" aria-label="Reroll a card"></div>
+      </div>
       <p id="bit" class="bit"></p>
       <div id="story" class="story"></div>
+      <p class="tip">Tap a word to tune it. ← → step it plainer or stranger. Pin the ones you love; shuffles keep them.</p>
       <div class="actions">
-        <button id="shuffle" class="primary">New bits <kbd>space</kbd></button>
+        <button id="shuffle" class="primary">Shuffle <kbd>space</kbd></button>
         <button id="retell">Retell <kbd>r</kbd></button>
         <button id="keep">Keep this character <kbd>k</kbd></button>
         <button id="share" class="ghost">Copy link</button>
+      </div>
+    </section>
+
+    <section class="bank-wrap" aria-labelledby="bank-h">
+      <div class="bank-head"><h2 id="bank-h">Word bank</h2><span id="bank-count" class="count"></span></div>
+      <p class="help">Your own words. They turn up in shuffles and in the word picker, and they travel inside any story link you share.</p>
+      <form id="bank-form" class="bank-form" autocomplete="off">
+        <label class="bf-field"><span class="dial-label">Slot</span><select id="bf-slot"></select></label>
+        <label class="bf-field bf-text"><span class="dial-label">Word</span><input id="bf-text" maxlength="60" placeholder="type a word or phrase"></label>
+        <fieldset class="bf-field"><legend class="dial-label">Register</legend>
+          <span class="seg"><label><input type="radio" name="bf-tier" value="0">plausible</label><label><input type="radio" name="bf-tier" value="1" checked>odd</label><label><input type="radio" name="bf-tier" value="2">absurd</label></span>
+        </fieldset>
+        <fieldset class="bf-field" id="bf-mood-row" hidden><legend class="dial-label">Mood</legend>
+          <span class="seg"><label><input type="radio" name="bf-mood" value="1">good</label><label><input type="radio" name="bf-mood" value="0" checked>mixed</label><label><input type="radio" name="bf-mood" value="-1">bad</label></span>
+        </fieldset>
+        <label class="bf-field" id="bf-det-row" hidden><span class="dial-label">Starts with</span><select id="bf-det"></select></label>
+        <label class="bf-field" id="bf-pr-row" hidden><span class="dial-label">Pronouns</span><select id="bf-pr"><option value="he">he/him</option><option value="she">she/her</option><option value="they" selected>they/them</option></select></label>
+        <div class="bf-preview">
+          <p class="bf-frame" id="bf-frame"></p>
+          <p class="bf-hint" id="bf-hint"></p>
+          <p class="bf-error" id="bf-error" role="alert"></p>
+        </div>
+        <button id="bf-add" class="primary" type="submit">Add to bank</button>
+      </form>
+      <div id="bank-list" class="bank-list"></div>
+      <div class="bank-share">
+        <button id="bank-share" class="ghost">Copy pack link</button>
+        <button id="bank-suggest" class="ghost">Suggest for everyone ↗</button>
+        <p class="help">A pack link adds your words to whoever opens it. Suggesting opens a GitHub issue; accepted words join the shared bank for everyone.</p>
       </div>
     </section>
 
@@ -65,9 +93,11 @@
       <p>Funny stories are things that happened that don't quite fit, landing somewhere it's safe to laugh. Turn up the dial to widen the gap.</p>
     </footer>
   </main>
+  <div id="picker" class="picker" role="dialog" aria-label="Tune a word" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="data.js"></script>
+  <script src="grammar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
