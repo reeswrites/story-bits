@@ -76,14 +76,17 @@ function checkEntry(e, g) {
   if (e.g !== undefined && e.g !== g.id) return "belongs to another grammar";
   const schema = g.schemas[e.s];
   if (!schema) return "unknown card";
-  const part = schema.parts.find((p) => p.k === e.k);
+  const k = e.k;
+  const part = schema.parts.find((p) => p.k === k);
   if (!part) return "unknown slot";
   if (typeof e.t !== "string" || !e.t || e.t !== cleanWord(e.t) || e.t.length > 60) return "text must be 1–60 characters, without braces or angle brackets";
   if (![0, 1, 2].includes(e.tier)) return "register must be plausible, odd or absurd";
   if (part.mood) { if (![-1, 0, 1].includes(e.v)) return "this slot needs a mood: good, mixed or bad"; }
   else if (e.v !== undefined) return "this slot doesn't take a mood";
+  if (part.relation) return "this slot holds a whole other phrase; tune it instead";
   if (part.det) { if (!part.det.includes(e.det)) return `needs to start with ${part.det.join(" or ")}`; }
-  else if (e.det !== undefined) return "this slot doesn't take a starting word";
+  // A word saved before its card had a determiner slot may still carry one of that slot's words.
+  else if (e.det !== undefined && !(k === "n" && schema.parts.some((p) => p.determiner && p.pool.some((w) => w.t === e.det)))) return "this slot doesn't take a starting word";
   if (part.pronouns) { if (!PRON[e.pr]) return "needs pronouns: he, she, they or it"; }
   else if (e.pr !== undefined) return "this slot doesn't take pronouns";
   if (!wordAllowed(e.t, g)) return `breaks this grammar's constraints (${(g.rules?.constraints || []).map(describeConstraint).filter(Boolean).join("; ")})`;
@@ -100,6 +103,11 @@ function poolEntry(e, g) {
     ...(e.k === "n" && takesIntensity(e.s, g) && { adj: shortEnough(e.t) }),
   };
 }
+
+// Word families: a pool word may carry tags (["family", "work"]), a short list of short lowercase
+// names. Words in one slot that share a tag are neighbors, for moves like Sideways.
+const TAGS_MAX = 4;
+const tagsOk = (t) => t === undefined || (Array.isArray(t) && t.length >= 1 && t.length <= TAGS_MAX && new Set(t).size === t.length && t.every((x) => typeof x === "string" && /^[a-z][a-z-]{0,15}$/.test(x)));
 
 // ---------- forms ----------
 // A form is the shape of a telling. A form is valid only if:
@@ -212,6 +220,9 @@ function checkGrammar(g) {
       if (typeof p.name !== "string" || !p.name.trim() || p.name.length > 24) return `card "${key}" slot "${p.k}" needs a name`;
       if (p.odds !== undefined && (typeof p.odds !== "number" || !(p.odds >= 0 && p.odds <= 1) || !p.opt)) return `card "${key}" slot "${p.k}": odds is a number from 0 to 1, on an optional slot`;
       if (p.needs !== undefined && p.needs !== "adj" && !pk.has(p.needs)) return `card "${key}" slot "${p.k}" needs a slot that doesn't exist`;
+      if (p.determiner !== undefined && (p.determiner !== true || p.opt || sc.parts.findIndex((x) => x.k === "n") < sc.parts.indexOf(p))) return `card "${key}" slot "${p.k}": a determiner slot is required and comes before the head`;
+      if (p.relation !== undefined && (p.relation !== true || !p.opt || sc.parts.findIndex((x) => x.k === "n") < sc.parts.indexOf(p) || !p.pool.every((w) => typeof w?.t === "string" && w.t.includes(`{${key}}`)))) return `card "${key}" slot "${p.k}": a relation slot is optional, comes before the head, and every word nests this card ({${key}})`;
+      if (p.determiner && p.relation) return `card "${key}" slot "${p.k}": a slot can't be both a determiner and a relation`;
       if (p.det !== undefined && (!Array.isArray(p.det) || !p.det.length || !p.det.every((d) => typeof d === "string" && d.length <= 12))) return `card "${key}" slot "${p.k}": det is a short list of starting words`;
       if (!Array.isArray(p.pool) || !p.pool.length || p.pool.length > 300) return `card "${key}" slot "${p.k}" needs 1–300 words`;
       // A retired word (retired: true) stays in the pool so saved pieces keep their indices, but at
@@ -221,6 +232,8 @@ function checkGrammar(g) {
         if (w && w.retired !== undefined && w.retired !== true) return `card "${key}" slot "${p.k}": retired is true or absent`;
         if (!w || typeof w.t !== "string" || !w.t.trim() || w.t.length > 120 || /[<>]/.test(w.t) || !tokenOk(w.t)) return `card "${key}" slot "${p.k}": bad word ${JSON.stringify(w?.t ?? w)}`;
         if (![0, 1, 2].includes(w.tier)) return `card "${key}" slot "${p.k}": every word needs a tier 0–2`;
+        if (!tagsOk(w.tags)) return `card "${key}" slot "${p.k}": tags on ${JSON.stringify(w.t)} are a list of 1–${TAGS_MAX} short lowercase names`;
+        if (p.determiner && /\{/.test(w.t)) return `card "${key}" slot "${p.k}": a determiner can't nest a card`;
         if (p.mood && ![-1, 0, 1].includes(w.v)) return `card "${key}" slot "${p.k}": every word needs a mood -1, 0 or 1`;
         if (p.det && !w.retired && !p.det.includes(w.det)) return `card "${key}" slot "${p.k}": every word needs a starting word from its list`;
         if (p.pronouns && !PRONOUN_TOKENS.every((t) => typeof w[t] === "string")) return `card "${key}" slot "${p.k}": every word needs pronouns`;

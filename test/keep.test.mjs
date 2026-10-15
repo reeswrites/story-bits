@@ -50,8 +50,9 @@ test("the old cast moves onto the shelf without loss", () => {
     return { shelf, here: shelfFor(shelf, GRAMMARS["story-bits"]).map(({ i }) => i), poems: shelfFor(shelf, GRAMMARS["small-poems"]).length };
   })()`);
   assert.deepEqual(r.shelf, [
-    { g: "story-bits", card: "who", ph: { w: { n: 3 } }, bits: ["Your grandmother got a tattoo of a lighthouse, and she is proud."] },
-    { g: "story-bits", card: "who", ph: { w: { d: 1, n: 5 } }, bits: ["a", "b"] },
+    // Kept before "whose": checking them for the shelf gives them the determiner they had ("your").
+    { g: "story-bits", card: "who", ph: { w: { n: 3, w: 0 } }, bits: ["Your grandmother got a tattoo of a lighthouse, and she is proud."] },
+    { g: "story-bits", card: "who", ph: { w: { d: 1, n: 5, w: 0 } }, bits: ["a", "b"] },
     { g: "my-fork", card: "hero", ph: { w: { n: 0 } }, bits: ["c"] },
   ]);
   assert.deepEqual(r.here, [0, 1]);

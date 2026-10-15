@@ -122,13 +122,16 @@ function phraseTier(schema, ph) {
 const phraseV = (schema, ph) => word(schema, ph, "n").v;
 // A phrase's sound, for sound pairs: the first letter of its first word, past any determiner.
 function phraseSound(schema, ph) {
-  const t = tokens(schema, ph, person(), schema).find((x) => x.word !== undefined);
-  return (t?.word || "").trim().charAt(0).toLowerCase();
+  return firstText(tokens(schema, ph, person(), schema), true).trim().charAt(0).toLowerCase();
 }
 
+// A relation slot holds another phrase of the same card ({who}'s), which brings its own determiner:
+// "your uncle's dentist". Is one filled in this phrase?
+const related = (schema, ph) => SCHEMAS[schema].parts.some((p) => p.relation && p.k in ph.w);
 // Can this slot be filled, given the rest of the phrase?
 function allowed(schema, ph, part) {
   if (part.trailing && ph.x) return false;
+  if (part.determiner && related(schema, ph)) return false;
   if (!part.needs) return true;
   if (part.needs === "adj") return !!word(schema, ph, "n").adj;
   return part.needs in ph.w;
@@ -162,20 +165,46 @@ function setWord(schema, ph, k, val, depth) {
   return ph;
 }
 function dropWord(schema, ph, k) {
+  // Dropping a relation hands its determiner back: "your uncle's dentist" → "your dentist".
+  const inner = ph.sub?.[k];
+  const own = inner && subSchema(schema, ph, k) === schema ? inner.w : {};
   delete ph.w[k];
   if (ph.sub) delete ph.sub[k];
+  for (const p of SCHEMAS[schema].parts) if (p.determiner && !(p.k in ph.w) && p.k in own && allowed(schema, ph, p)) ph.w[p.k] = own[p.k];
   tidy(schema, ph);
 }
 function tidy(schema, ph) {
   for (const p of SCHEMAS[schema].parts) if (p.k in ph.w && !allowed(schema, ph, p)) dropWord(schema, ph, p.k);
+  for (const p of SCHEMAS[schema].parts) if (p.determiner && !(p.k in ph.w) && allowed(schema, ph, p)) ph.w[p.k] = headDet(schema, ph, p);
   if (ph.sub && !Object.keys(ph.sub).length) delete ph.sub;
+}
+// The determiner a phrase takes when it has none: the one its head word used to carry (Story
+// Bits' people were "your uncle", "the kid down the street" before "whose" was a slot), else the
+// slot's first word.
+function headDet(schema, ph, part) {
+  const n = ph.w.n;
+  const head = n === undefined ? null : typeof n === "number" ? partOf(schema, "n").pool[n] : n;
+  const i = head?.det ? part.pool.findIndex((w) => w.t === head.det) : -1;
+  return Math.max(0, i);
+}
+// Older phrases (links, saved pieces, the shelf, lore) from before a card had its determiner
+// slot: give each one the determiner its head word carried, all the way down. Changes ph in place.
+function upgradePhrase(schema, ph, depth = 0) {
+  if (!ph || typeof ph.w !== "object" || ph.w === null || depth > MAX_DEPTH) return;
+  const parts = SCHEMAS[schema].parts;
+  for (const p of parts) if (p.determiner && !(p.k in ph.w) && validValue(schema, partOf(schema, "n"), ph.w.n, depth) && allowed(schema, ph, p)) ph.w[p.k] = headDet(schema, ph, p);
+  for (const k in ph.sub || {}) {
+    const part = parts.find((p) => p.k === k);
+    const inner = part && validValue(schema, part, ph.w[k], depth) ? nestKey(entryOf(schema, k, ph.w[k])) : null;
+    if (inner) upgradePhrase(inner, ph.sub[k], depth + 1);
+  }
 }
 
 // Which optional slots are filled. Nested things are kept a little shorter. A slot's `odds`
-// (0–1) sets how often a fresh phrase fills it at the top level.
+// (0–1) sets how often a fresh phrase fills it (nested, never more often than 0.35).
 function randomShape(schema, depth = 0) {
   const shape = {};
-  for (const p of SCHEMAS[schema].parts) if (p.opt) shape[p.k] = rng() < (depth ? 0.35 : p.odds ?? 0.5);
+  for (const p of SCHEMAS[schema].parts) if (p.opt) shape[p.k] = rng() < (depth ? Math.min(0.35, p.odds ?? 1) : p.odds ?? 0.5);
   return shape;
 }
 const shapeOf = (ph) => Object.fromEntries(Object.keys(ph.w).map((k) => [k, true]));
@@ -237,20 +266,25 @@ function tokens(schema, ph, who, slot, path = [], ghosts = false) {
       if (after.trim()) out.push({ text: after.trim(), glue: /^['’]/.test(after) });
     } else out.push({ word: text, part: p, path: at });
   }
+  // A determiner slot's "a" agrees with the word after it: "an uncle", "a tall uncle".
+  for (const [i, t] of out.entries()) if (t.part?.determiner && /^an?$/i.test(t.word)) t.word = /^[aeiou]/i.test(firstText(out.slice(i + 1))) ? "an" : "a";
   // Determiner: an article card takes a/an; a head word with a determiner brings its own. A
-  // phrase that opens with a filled relation slot ("your uncle's dentist") already has one.
+  // phrase that opens with a filled relation slot ("your uncle's dentist") already has one, and so
+  // does a card with a determiner slot.
   const parts = SCHEMAS[schema].parts;
   const ledByRelation = parts.slice(0, parts.findIndex((p) => p.k === "n")).some((p) => p.relation && p.k in ph.w);
-  let det = ledByRelation ? "" : SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
+  let det = ledByRelation || parts.some((p) => p.determiner) ? "" : SCHEMAS[schema].article ? "a" : partOf(schema, "n").det ? word(schema, ph, "n").det || "" : "";
   // "a"/"an" agree with the next word, also after a preposition ("under an old stair").
   if (/(^|\s)an?$/.test(det)) det = det.replace(/an?$/, /^[aeiou]/i.test(firstText(out)) ? "an" : "a");
   if (det) out.unshift({ text: det });
   return out;
 }
-function firstText(toks) {
+// The first text the tokens show; pastDet skips determiners (plain text and determiner words).
+function firstText(toks, pastDet = false) {
   for (const t of toks) {
-    if (t.ghost || t.word === "") continue;
-    return t.group ? firstText(t.group) : t.word ?? t.text;
+    if (t.ghost || t.word === "" || (pastDet && (t.text !== undefined || t.part?.determiner))) continue;
+    const s = t.group ? firstText(t.group, pastDet) : t.word ?? t.text;
+    if (s) return s;
   }
   return "";
 }
@@ -754,12 +788,15 @@ function validValue(schema, part, val, depth) {
   if (typeof val === "number") return Number.isInteger(val) && val >= 0 && val < part.pool.length;
   return !!val && typeof val === "object" && typeof val.c === "string" && !checkEntry(asEntry(schema, part.k, val), G);
 }
+// An older phrase is upgraded first (upgradePhrase), in place, so old links and kept phrases open.
 function validPhrase(schema, ph, depth) {
-  if (!ph || typeof ph.w !== "object") return false;
+  if (!ph || typeof ph.w !== "object" || ph.w === null) return false;
+  if (depth === 0) upgradePhrase(schema, ph);
   const parts = SCHEMAS[schema].parts;
   if (!Object.keys(ph.w).every((k) => parts.some((p) => p.k === k))) return false;
   for (const p of parts) {
-    if (!(p.k in ph.w)) { if (!p.opt) return false; continue; }
+    // A required slot may be missing only where it isn't allowed (a determiner after a relation).
+    if (!(p.k in ph.w)) { if (!p.opt && allowed(schema, ph, p)) return false; continue; }
     if (!validValue(schema, p, ph.w[p.k], depth)) return false;
     const inner = nestKey(entryOf(schema, p.k, ph.w[p.k]));
     if (inner && (depth >= MAX_DEPTH || !validPhrase(inner, ph.sub?.[p.k], depth + 1))) return false;

@@ -393,10 +393,10 @@ function drawPicker(el) {
       ${loreTarget() ? `<button data-act="lore" title="Keep the whole phrase in ${esc(loreTarget().name)}'s lore">Keep “${esc(phraseText(sel.slot).slice(0, 32))}” as lore</button>` : ""}
     </div>
     ${allWordsHtml(groups, pickerVals.length, "words")}
-    <form class="pk-own" autocomplete="off">
+    ${part.relation ? "" : `<form class="pk-own" autocomplete="off">
       <input name="own" maxlength="60" placeholder="Your own ${esc(part.name)}…" aria-label="Your own ${esc(part.name)}">
       <button type="submit">Use</button>
-    </form>
+    </form>`}
     ${marksHtml()}
     ${state.room ? jamPickerHtml(`${sel.slot}|${sel.path.join(".")}`, label(cur)) : ""}`;
   el.classList.toggle("readonly", !!state.room && jamReadOnly());
