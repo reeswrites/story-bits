@@ -12,7 +12,7 @@ Newcomer walk-through of the live site at https://reeswrites.com/story-bits/ in 
 
 ## Findings
 
-Fixed since: #8, #9 and #10 (2026-10-15; see "Grammar-text fixes" in docs/design.md).
+Fixed since: #8, #9 and #10 (2026-10-15; see "Grammar-text fixes" in docs/design.md); #2 and #7 (2026-10-15: on phones the jam bar is a one-line strip — code, role, avatars, the host's phase button, ▾ — with everything else behind the expander; everyone gets a name prompt on joining and a stable placeholder like "Brisk Moth" until they type one, used in the bar, comments, presence tags and reveal cards).
 
 | # | Sev | Where | What happened | Steps | Screenshot |
 |---|-----|-------|---------------|-------|-----------|

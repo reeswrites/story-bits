@@ -933,3 +933,36 @@ body.cmp-drafts .cmp-help-drafts { display: block; }
   .cmp-count { display: inline; }
 }
 @media (max-width: 639px) { .hist { width: 100%; border-left: 0; box-shadow: none; } .hist-scrim { display: none; } }
+
+/* ---- jam bar: one-line strip + expander (qa-b) ---- */
+.rb-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rb-strip .rb-code { font-size: 22px; }
+.rb-id { display: grid; gap: 2px; flex: none; }
+.rb-role { font: 500 11px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); }
+.rb-faces { display: none; gap: 0; flex: none; }
+.rb-face { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; margin-left: -6px; font: 600 13px "IBM Plex Mono", monospace; background: var(--peer, var(--rule)); color: #fff; border: 2px solid var(--card); box-sizing: border-box; }
+.rb-face:first-child { margin-left: 0; }
+.rb-face.more { background: var(--card); color: var(--ink); font-size: 11px; }
+.rb-count { font-size: 13px; }
+.rb-act { margin-left: auto; display: inline-flex; gap: 8px; }
+.rb-act:empty { display: none; }
+.rb-act button { font: 500 14px "IBM Plex Mono", monospace; padding: 8px 14px; border-radius: 6px; border: 1.5px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; min-height: 44px; }
+.rb-act button:disabled { border-style: dashed; background: transparent; color: var(--ink-2); border-color: var(--rule); cursor: default; }
+.rb-toggle { display: none; min-width: 44px; min-height: 44px; font-size: 16px; border-radius: 6px; border: 1.5px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; }
+.rb-ask { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-top: 10px; }
+.rb-ask label { flex: 1 1 160px; display: grid; gap: 4px; }
+.rb-ask input { font: inherit; font-size: 16px; color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px 10px; min-height: 44px; }
+.rb-ask button { font: 500 14px "IBM Plex Mono", monospace; padding: 8px 14px; border-radius: 6px; border: 1.5px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; min-height: 44px; }
+.rb-ask button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.rb-more { margin-top: 4px; }
+@media (max-width: 700px) {
+  .room-bar { padding: 8px 12px; margin-bottom: 12px; }
+  .rb-faces { display: inline-flex; }
+  .rb-toggle { display: inline-grid; place-items: center; }
+  .rb-strip { flex-wrap: nowrap; }
+  .rb-act button { white-space: nowrap; padding: 8px 10px; }
+  .rb-ask label { flex-basis: 120px; }
+  .rb-strip .rb-code { font-size: 18px; letter-spacing: .08em; }
+  .room-bar:not(.open) .rb-more { display: none; }
+  .rb-more { border-top: 1px solid var(--rule); margin-top: 8px; padding-top: 8px; }
+}
