@@ -21,8 +21,16 @@
 // its claps and notes). No accounts, emails or IPs. How long a jam is kept is the host's call
 // (RETAIN: a month or a year after the last activity, or until the host deletes it; a year by
 // default). The host can wipe its history and comments ("forget") or delete it outright, any time.
+//
+// A jam can open inside a space (space.js): the host links it with the space's edit key, and the
+// jam relays the space's grammars, lore and cast to everyone in it (they need no space keys).
+// Phrases kept in the jam go to the space's lore; finished rounds go to its jam history. The jam
+// keeps the space's id and name, never its keys.
 
-import { Server, routePartykitRequest } from "partyserver";
+import { Server, getServerByName, routePartykitRequest } from "partyserver";
+import { StorySpace } from "./space.js";
+
+export { StorySpace };
 
 const MAX_PLAYERS = 24;
 const MAX_MSG = 256 * 1024;
@@ -48,6 +56,7 @@ const fresh = () => ({
   doc: null, rev: 0, comments: [], seq: 0,
   rules: { moves: 3, claps: true },
   retain: "1y",
+  space: null,
   phase: "lobby", round: 0, challenge: null, players: {}, entries: {}, claps: {},
 });
 
@@ -57,6 +66,18 @@ export class StoryRoom extends Server {
   async onStart() {
     this.room = { ...fresh(), ...((await this.ctx.storage.get("room")) || {}) };
     this.rounds = (await this.ctx.storage.get("rounds")) || [];
+    this.spaceCtx = (await this.ctx.storage.get("spacectx")) || null;
+  }
+
+  // ---------- the space this jam is in ----------
+  async spaceStub() {
+    return this.room.space ? getServerByName(this.env.StorySpace, this.room.space.id) : null;
+  }
+  async setSpaceCtx(ctx) {
+    this.spaceCtx = ctx;
+    if (ctx) await this.ctx.storage.put("spacectx", ctx);
+    else await this.ctx.storage.delete("spacectx");
+    this.broadcast(JSON.stringify({ t: "space", ctx }));
   }
 
   // Connections still open (a closing one may still be listed; skip it).
@@ -99,7 +120,7 @@ export class StoryRoom extends Server {
       you: { pid: conn.state?.pid || null, role },
       room: {
         code: this.name, mode: r.mode, host: r.host, owner: r.owner, rev: r.rev,
-        rules: r.rules, clapsEach: CLAPS_EACH, retain: r.retain,
+        rules: r.rules, clapsEach: CLAPS_EACH, retain: r.retain, space: r.space,
         // Invite keys only for editors: they can bring people in.
         keys: role === "edit" ? r.keys : null,
         phase: r.phase, round: r.round, challenge: r.challenge,
@@ -137,6 +158,7 @@ export class StoryRoom extends Server {
     await this.ctx.storage.deleteAll();
     this.room = fresh();
     this.rounds = [];
+    this.spaceCtx = null;
   }
 
   async onConnect(conn, ctx) {
@@ -153,6 +175,7 @@ export class StoryRoom extends Server {
     conn.setState({ role, pid: null, sel: null, owner: role === "edit" && !r.owner });
     conn.send(JSON.stringify(this.view(conn)));
     if (r.doc) conn.send(JSON.stringify({ t: "doc", rev: r.rev, doc: r.doc }));
+    if (this.spaceCtx) conn.send(JSON.stringify({ t: "space", ctx: this.spaceCtx }));
   }
 
   async onClose(conn) {
@@ -315,6 +338,9 @@ export class StoryRoom extends Server {
         });
         this.rounds = this.rounds.slice(-MAX_ROUNDS);
         await this.ctx.storage.put("rounds", this.rounds);
+        const last = this.rounds[this.rounds.length - 1];
+        const stub = await this.spaceStub();
+        if (stub) await stub.jamRound(this.name, { round: last.round, names: entries.map((e) => e.name), top: last.top }).catch(() => {});
         return this.save();
       }
       case "lobby": // host: back to the start for another round
@@ -330,9 +356,39 @@ export class StoryRoom extends Server {
         await this.ctx.storage.deleteAll();
         this.room = fresh();
         this.rounds = [];
+        this.spaceCtx = null;
         for (const c of this.conns()) { c.send(JSON.stringify({ t: "deleted" })); c.close(1000, "deleted"); }
         return;
       }
+      // ----- the space -----
+      case "space": { // host: open this jam inside a space, proving edit access with its key
+        if (!isHost || typeof m.id !== "string" || !/^[A-Z0-9]{8}$/.test(m.id) || typeof m.k !== "string") return;
+        const stub = await getServerByName(this.env.StorySpace, m.id);
+        const ctx = await stub.linkJam(this.name, m.k).catch(() => null);
+        if (!ctx) { conn.send(JSON.stringify({ t: "error", error: "That space didn't let this jam in. You need its edit link." })); return; }
+        r.space = { id: m.id, name: clean(ctx.name, 60) };
+        await this.save();
+        return this.setSpaceCtx(ctx);
+      }
+      case "unspace": // host: take the jam out of its space
+        if (!isHost || !r.space) return;
+        r.space = null;
+        await this.save();
+        return this.setSpaceCtx(null);
+      case "spacesync": { // anyone: fetch the space's grammars, lore and cast again
+        const stub = await this.spaceStub();
+        const ctx = stub && (await stub.jamContext(this.name).catch(() => null));
+        if (ctx) return this.setSpaceCtx(ctx);
+        return;
+      }
+      case "lore": { // commenters and editors: keep a phrase as the space's lore
+        if (!can("comment")) return;
+        const stub = await this.spaceStub();
+        const lore = stub && (await stub.jamLore(this.name, m.entry, r.players[pid].name).catch(() => null));
+        if (!lore) return;
+        return this.setSpaceCtx({ ...this.spaceCtx, lore });
+      }
+
       case "forget": // host: wipe stored rounds and comments
         if (!isHost) return;
         this.rounds = [];
@@ -350,10 +406,25 @@ function allowed(origin, env) {
   return String(env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).includes(origin);
 }
 
+// Spaces are HTTP: answered for allowed pages only, with CORS for them.
+async function spaceRequest(request, env) {
+  const origin = request.headers.get("Origin");
+  if (!allowed(origin, env)) return new Response("Forbidden", { status: 403 });
+  const cors = { "access-control-allow-origin": origin, "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type", vary: "Origin" };
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (request.headers.get("Upgrade")) return new Response("Spaces are HTTP only.", { status: 400, headers: cors });
+  const res = (await routePartykitRequest(request, env)) || new Response("Not found", { status: 404 });
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(cors)) out.headers.set(k, v);
+  return out;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/") return new Response("Story Bits jams. Open one from the site.", { headers: { "content-type": "text/plain" } });
+    // Space ids are 8 characters from the same alphabet as jam codes.
+    if (/^\/parties\/story-space\/[A-Z0-9]{8}$/.test(url.pathname)) return spaceRequest(request, env);
     // Jam codes are short and public-ish; keep them to a fixed alphabet.
     if (!/^\/parties\/story-room\/[A-Z0-9]{4,8}$/.test(url.pathname)) return new Response("Not found", { status: 404 });
     return (

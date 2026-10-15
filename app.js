@@ -635,6 +635,7 @@ function renderPicker() {
       <button data-act="surprise">Surprise me</button>
       ${state.game ? (selChanged() ? `<button data-act="putback">Put back</button>` : "") : `<button data-act="pin" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button>`}
       ${part.opt ? `<button data-act="remove">Remove</button>` : ""}
+      ${loreTarget() ? `<button data-act="lore" title="Keep the whole phrase in ${esc(loreTarget().name)}'s lore">Keep “${esc(phraseText(sel.slot).slice(0, 32))}” as lore</button>` : ""}
     </div>
     <div class="pk-list">${groups}</div>
     <form class="pk-own" autocomplete="off">
@@ -771,26 +772,46 @@ function validPhrase(schema, ph, depth) {
   }
   return parts.every((p) => !(p.k in ph.w) || allowed(schema, ph, p));
 }
-// Everything that makes a piece what it is. v2 added the form and hand-tuned beats; v3 adds the
-// grammar (by id, and carried inline when it isn't built in, so the link works anywhere).
+// The grammar fields of a snapshot. v3 names the grammar by id, carried inline (gx) when it isn't
+// built in, so the link works anywhere. v4 (docs/design.md, "Spaces") also pins a space grammar's
+// version: gs = the space, gv = the version. A public space's version can be fetched by anyone,
+// so its links leave gx out and stay short.
+function grammarFields(g) {
+  const src = srcOf.get(g);
+  const builtin = GRAMMARS[g.id] === g;
+  return { v: src ? 4 : 3, g: g.id, ...(src && { gs: src.sp, gv: src.ver }), ...(!builtin && !src?.pub && { gx: g }) };
+}
+// Everything that makes a piece what it is. v2 added the form and hand-tuned beats; v3 the
+// grammar; v4 the grammar's version, for grammars from a space.
 function snapshot() {
   return {
-    v: 3, g: G.id, ...(!GRAMMARS[G.id] && { gx: G }),
+    ...grammarFields(G),
     f: state.form, p: state.pick, d: state.dial, s: state.seed, l: state.len, b: state.beats, pn: state.pins,
   };
 }
-// The grammar a snapshot names: built in, in your library, or carried inline (checked).
-function resolveGrammar(id = "story-bits", inline) {
+// The grammar a snapshot names: a pinned space version (fetched ahead by prefetchRefs, or carried
+// inline), built in, in your library, carried inline (checked), or the one in use.
+function resolveGrammar(id = "story-bits", inline, ref) {
+  if (ref) {
+    const v = knownVersion(ref, id);
+    if (v) return v;
+    if (inline && inline.id === id && !GRAMMARS[id] && !checkGrammar(inline)) {
+      if (!srcOf.get(inline)) srcOf.set(inline, { sp: ref.gs, ver: ref.gv, pub: false });
+      return inline;
+    }
+    return null;
+  }
   if (GRAMMARS[id]) return GRAMMARS[id];
   if (library[id]) return library[id];
   if (inline && inline.id === id && !checkGrammar(inline)) return inline;
+  if (G && G.id === id) return G;
   return null;
 }
 // Check a snapshot from a link and normalize it, or return null. v1/v2 links (Story Bits, no
-// grammar field) still load.
+// grammar field) still load; so do v3 and v4.
 function parseSnapshot(x) {
   const { p, d, s, l, pn = [], f, b = {}, g: gid = "story-bits", gx } = x || {};
-  const gram = resolveGrammar(gid, gx);
+  const gram = resolveGrammar(gid, gx, refOf(x));
   if (!gram) return null;
   const fk = f ?? Object.keys(gram.forms)[0];
   const fm = gram.forms[fk];
@@ -799,7 +820,7 @@ function parseSnapshot(x) {
   if (!p || !withGrammar(gram, () => gram.cards.every((c) => validPhrase(c.key, p[c.key], 0)))) return null;
   const beats = b && typeof b === "object" ? Object.fromEntries(Object.entries(b).filter(([k, i]) => fm.beats[k] && Number.isInteger(i) && i >= 0)) : {};
   const out = {
-    v: 3, g: gram.id, ...(!GRAMMARS[gram.id] && { gx: gram }),
+    ...grammarFields(gram),
     f: fk, p, d, s: s || 1, l, b: beats, pn: Array.isArray(pn) ? pn.filter((x) => typeof x === "string") : [],
   };
   // The resolved grammar rides along, but never into JSON (links carry gx instead).
@@ -1057,11 +1078,16 @@ function renderCompare() {
   document.body.classList.toggle("room-compare", !!state.room);
   const top = Math.max(0, ...cmp.entries.map((e) => e.votes));
   const original = `<article class="version original"><header><h3>The original</h3><span class="count">${esc(cmp.c.d ? `today's bit · ${cmp.c.h}` : cmp.c.h ? `from ${cmp.c.h}` : "start")}</span></header>${staticHtml(cmp.c.s, [])}</article>`;
+  const startHtml = currentLore().length ? staticHtml(cmp.c.s, []) : "";
   el.innerHTML = original + cmp.entries.map((e, i) => {
     const ch = changes(cmp.c.s, e.me);
+    const html = staticHtml(e.me, ch);
+    // A kept phrase from the space's lore, brought back: a callback.
+    const calls = startHtml ? callbacksIn(html, startHtml) : [];
     return `<article class="version${top > 0 && e.votes === top ? " leading" : ""}">
       <header><h3>${esc(e.name || `Player ${i + 1}`)}</h3><span class="count">${ch.length} move${ch.length === 1 ? "" : "s"}</span></header>
-      ${staticHtml(e.me, ch)}
+      ${html}
+      ${calls.length ? `<p class="callbacks"><span class="dial-label">↩ callback${calls.length === 1 ? "" : "s"}</span> ${calls.map((l) => `“${esc(cleanWord(l.text))}”`).join(", ")}</p>` : ""}
       ${state.room ? jamCardHtml(e) : ""}
       <div class="vote">${clapsOn() ? `<button class="clap" data-clap="${i}" aria-label="Clap for ${esc(e.name || `player ${i + 1}`)}" ${clapDisabled(e) ? "disabled" : ""}>👏 <b>${e.votes}</b></button>${top > 0 && e.votes === top ? `<span class="crown">${state.room?.data?.phase === "results" ? "winner" : "leading"}</span>` : ""}` : ""}${state.room && e.id === playerId() ? `<span class="crown mine">yours</span>` : ""}</div>
     </article>`;
@@ -1108,8 +1134,7 @@ function render() {
   $("#bit").innerHTML = bitHtml(ctx);
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
 
-  $("#grammar-pick").innerHTML = allGrammars().map((g) =>
-    `<option value="${esc(g.id)}" ${g.id === G.id ? "selected" : ""}>${esc(g.name)}${library[g.id] ? " (yours)" : ""}</option>`).join("");
+  $("#grammar-pick").innerHTML = grammarOptions();
   $("#grammar-desc").textContent = [G.description, ...(G.rules.constraints || []).map(describeConstraint).filter(Boolean).map((x) => cap(x) + ".")].filter(Boolean).join(" ");
   $("#headline-name").textContent = G.headline || "The line";
   $("#dial-name").textContent = G.rules.dialName || "Dial";
@@ -1136,7 +1161,7 @@ function render() {
 
 // Switch to another grammar: a fresh piece in its first form.
 function switchGrammar(id) {
-  const g = resolveGrammar(id);
+  const g = typeof id === "object" ? id : resolveGrammar(id);
   if (!g || g === G) return;
   if (state.game) leaveGame();
   useGrammar(g);
@@ -1152,6 +1177,18 @@ function switchGrammar(id) {
   renderLibrary();
 }
 const allGrammars = () => [...Object.values(GRAMMARS), ...Object.values(library)];
+// The grammar picker: built in and yours, then each joined space's grammars ("@SPACE/gid").
+function grammarOptions() {
+  const src = srcOf.get(G);
+  const mine = allGrammars().map((g) => `<option value="${esc(g.id)}" ${g === G ? "selected" : ""}>${esc(g.name)}${library[g.id] ? " (yours)" : ""}</option>`).join("");
+  const groups = [...spaces.list, ...(spaces.visiting ? [spaces.visiting] : [])].map((s) => spaces.data[s.id]).filter(Boolean).map((v) => {
+    const gs = v.items.filter((it) => it.kind === "grammar");
+    return gs.length ? `<optgroup label="${esc(v.name)}">${gs.map((it) => `<option value="@${v.id}/${esc(it.gid)}" ${src?.sp === v.id && G.id === it.gid ? "selected" : ""}>${esc(it.data.name)} v${it.head}</option>`).join("")}</optgroup>` : "";
+  }).join("");
+  // A pinned older version, or a grammar that came with a piece, still shows as in use.
+  const here = (allGrammars().includes(G) || (src && spaceGrammar(src.sp, G.id)?.data === G)) ? "" : `<option selected>${esc(G.name)}${src ? ` v${src.ver}` : ""}</option>`;
+  return here + mine + groups;
+}
 
 function setForm(key) {
   if (!FORMS[key] || key === state.form) return;
@@ -1358,10 +1395,13 @@ document.addEventListener("click", (e) => {
   else if (t.id === "gb-compare") { const me = playPayload(); openCompare(state.game.c, [parseCopy(me)].filter(Boolean)); }
   else if (t.id === "gb-leave") leaveGame();
   else if (t.id === "cmp-add") {
-    const n = addEntries(linksIn($("#cmp-paste").value));
-    $("#cmp-paste").value = "";
-    toast(n ? `Added ${n} version${n === 1 ? "" : "s"}.` : "No new versions in that text.");
-    renderCompare();
+    const text = $("#cmp-paste").value;
+    prefetchText(text).then(() => {
+      const n = addEntries(linksIn(text));
+      $("#cmp-paste").value = "";
+      toast(n ? `Added ${n} version${n === 1 ? "" : "s"}.` : "No new versions in that text.");
+      renderCompare();
+    });
   }
   else if (t.id === "cmp-copy") copy(compareLink(), "Compare link copied. Everyone who opens it sees all the versions.");
   else if (t.id === "cmp-play") startGame(state.compare.c, undefined, "");
@@ -1408,7 +1448,10 @@ const inBankForm = (e) => e.target instanceof Element && e.target.closest("#bank
 document.addEventListener("input", (e) => { if (inBankForm(e)) updateBankForm(); });
 document.addEventListener("change", (e) => {
   if (inBankForm(e)) updateBankForm();
-  else if (e.target instanceof Element && e.target.id === "grammar-pick") switchGrammar(e.target.value);
+  else if (e.target instanceof Element && e.target.id === "grammar-pick") {
+    const m = /^@([A-Z0-9]{8})\/(.+)$/.exec(e.target.value);
+    if (m) useSpaceGrammar(m[1], m[2]); else switchGrammar(e.target.value);
+  }
 });
 
 // Hovering a word outlines the phrase it belongs to, so it's clear what a clause attaches to.
@@ -1462,8 +1505,17 @@ addEventListener("resize", () => state.sel && positionPicker());
   const h = location.hash.slice(1);
   const [kind, data] = h.includes("=") ? [h.slice(0, h.indexOf("=")), h.slice(h.indexOf("=") + 1)] : ["", h];
   const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };
+  // Pieces pinned to a space's grammar version: fetch those versions before parsing.
+  if (["", "c", "p"].includes(kind)) { try { await prefetchRefs(JSON.parse(unb64(data))); } catch {} }
+  else if (kind === "s" || kind === "cmp") await prefetchText("#" + h);
   let ready = false;
   if (kind === "pack") importPack(data);
+  else if (kind === "space" || kind === "sp") {
+    for (const sl of SLOTS) state.pick[sl.key] = randomPhrase(sl.key);
+    state.seed = 1 + rand(1e9);
+    ready = true;
+    queueMicrotask(async () => { await receiveSpace(kind, data); renderSpaces(); renderLibrary(); render(); $("#spaces").scrollIntoView({ behavior: "smooth", block: "start" }); });
+  }
   else if (kind === "grammar") receiveGrammar(data);
   else if ((kind === "jam" || kind === "room") && ROOM_CODE.test(data.split("~")[0])) {
     // Start with a fresh story under the room; the room takes over once connected.
@@ -1493,5 +1545,8 @@ addEventListener("resize", () => state.sel && positionPicker());
   render();
   renderCast();
   renderLibrary();
+  renderSpaces();
+  // Spaces you've joined: fetch them (only those; nothing else leaves the browser).
+  if (spaces.list.length) refreshAllSpaces();
   if (lib.incoming) $("#library").scrollIntoView({ behavior: "smooth", block: "start" });
 })();

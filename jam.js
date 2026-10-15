@@ -9,6 +9,10 @@
 //
 // Roles come from the invite link: edit (~edit key), comment (~comment key), or view (no key).
 // Everything the jam sends is checked with the same parsers links use.
+//
+// A jam can open inside a space (spaces.js): the host links it, and the jam relays the space's
+// grammars, lore and cast to everyone here. Kept phrases go to the space's lore; at a workshop
+// reveal, a copy that brings one back is marked as a callback.
 
 const ROOMS_PROD = "story-bits-rooms.peregrine-rd.workers.dev";
 const ROOMS_HOST = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? `${location.hostname}:8799` : ROOMS_PROD;
@@ -47,7 +51,7 @@ function openRoom(code, key = "") {
   if (!ROOMS_HOST || !ROOM_CODE.test(code)) return;
   if (state.room) leaveRoom(true);
   if (state.game) leaveGame();
-  state.room = { code, key, ws: null, data: null, you: null, doc: null, lastSent: null, lastSel: null, presence: [], tries: 0, phase: null, round: 0, applying: false };
+  state.room = { code, key, ws: null, data: null, you: null, doc: null, lastSent: null, lastSel: null, presence: [], tries: 0, phase: null, round: 0, applying: false, spaceCtx: null, queue: Promise.resolve() };
   document.body.classList.add("in-room");
   connectRoom();
   renderRoomBar();
@@ -60,21 +64,16 @@ function connectRoom() {
   const ws = new WebSocket(`${proto}://${ROOMS_HOST}/parties/story-room/${room.code}${room.key ? `?k=${encodeURIComponent(room.key)}` : ""}`);
   room.ws = ws;
   ws.addEventListener("open", () => { room.tries = 0; ws.send(JSON.stringify({ t: "hello", pid: playerId(), name: savedName() })); renderRoomBar(); });
+  // Messages are handled in order; a piece pinned to a grammar version the page hasn't seen
+  // waits for that version to be fetched.
   ws.addEventListener("message", (e) => {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
-    if (state.room !== room) return;
-    if (m.t === "state" && m.room && typeof m.room === "object") syncRoom(m.room, m.you);
-    else if (m.t === "doc" && m.doc) { room.doc = m.doc; applyDoc(); }
-    else if (m.t === "patch" && m.set && typeof m.set === "object") {
-      if (!room.doc) { roomSend({ t: "sync" }); return; }
-      patchInto(room.doc, m.set);
-      if (m.by === playerId()) return; // our own change, already on screen
-      applyDoc();
-    }
-    else if (m.t === "presence" && Array.isArray(m.list)) { room.presence = m.list; paintPeers(); renderRoomBar(); }
-    else if (m.t === "error") toast(String(m.error || "The jam said no."));
-    else if (m.t === "deleted") { leaveRoom(); toast("The host deleted this jam."); }
+    room.queue = room.queue.then(async () => {
+      if (m.t === "space") takeSpaceCtx(room, m.ctx);
+      else if (m.t === "doc" || m.t === "state") await prefetchRefs(m.t === "doc" ? m.doc : m.room);
+      if (state.room === room) onRoomMessage(room, m);
+    }).catch(() => {});
   });
   ws.addEventListener("close", () => {
     if (state.room !== room) return;
@@ -83,6 +82,31 @@ function connectRoom() {
     // Reconnect with backoff; the jam keeps the piece, your copy and comments.
     setTimeout(() => state.room === room && connectRoom(), Math.min(8000, 500 * 2 ** room.tries++));
   });
+}
+// The space this jam is in, as the jam relays it: its grammar versions are checked and kept like
+// any other; lore and cast are checked where they're used.
+function takeSpaceCtx(room, ctx) {
+  if (!ctx || typeof ctx !== "object" || !SPACE_ID.test(ctx.id)) { room.spaceCtx = null; return; }
+  const grammars = (Array.isArray(ctx.grammars) ? ctx.grammars : []).map((g) => g && Number.isInteger(g.ver) && g.doc?.id === g.gid && { gid: g.gid, ver: g.ver, doc: addVersion(ctx.id, g.ver, g.doc, ctx.public) }).filter((g) => g && g.doc);
+  room.spaceCtx = {
+    id: ctx.id, name: cleanWord(ctx.name).slice(0, 60) || "a space", public: !!ctx.public, grammars,
+    lore: (Array.isArray(ctx.lore) ? ctx.lore : []).filter((l) => l && typeof l.text === "string" && l.text),
+    cast: Array.isArray(ctx.cast) ? ctx.cast : [],
+  };
+}
+function onRoomMessage(room, m) {
+  if (m.t === "space") { renderRoomBar(); render(); return; }
+  if (m.t === "state" && m.room && typeof m.room === "object") syncRoom(m.room, m.you);
+  else if (m.t === "doc" && m.doc) { room.doc = m.doc; applyDoc(); }
+  else if (m.t === "patch" && m.set && typeof m.set === "object") {
+    if (!room.doc) { roomSend({ t: "sync" }); return; }
+    patchInto(room.doc, m.set);
+    if (m.by === playerId()) return; // our own change, already on screen
+    applyDoc();
+  }
+  else if (m.t === "presence" && Array.isArray(m.list)) { room.presence = m.list; paintPeers(); renderRoomBar(); }
+  else if (m.t === "error") toast(String(m.error || "The jam said no."));
+  else if (m.t === "deleted") { leaveRoom(); toast("The host deleted this jam."); }
 }
 function leaveRoom(quiet) {
   const room = state.room;
@@ -109,7 +133,7 @@ function patchInto(doc, set) {
 }
 // What changed between two pieces, as patch paths; "whole" when the grammar itself changed.
 function diffDoc(a, b) {
-  if (a.g !== b.g || JSON.stringify(a.gx) !== JSON.stringify(b.gx)) return "whole";
+  if (a.g !== b.g || a.gs !== b.gs || a.gv !== b.gv || JSON.stringify(a.gx) !== JSON.stringify(b.gx)) return "whole";
   const set = {};
   for (const k of ["v", "f", "d", "s", "l"]) if (!same(a[k], b[k])) set[k] = b[k];
   for (const top of ["p", "b"]) {
@@ -263,6 +287,9 @@ function syncRoom(d, you) {
   room.phase = d.phase;
   room.round = d.round;
   room.mode = d.mode;
+  // Opened from a space: once this tab is the host, link the jam to it.
+  if (room.pendingSpace && isRoomHost()) { roomSend({ t: "space", id: room.pendingSpace.id, k: room.pendingSpace.k }); room.pendingSpace = null; }
+  if (!d.space && room.spaceCtx) room.spaceCtx = null;
   document.body.classList.toggle("jam-readonly", jamReadOnly());
   if (d.mode === "together") {
     if (state.game) leaveGame();
@@ -331,6 +358,13 @@ function renderRoomBar() {
   const history = d?.mode === "workshop" && d.history?.length ? `<details class="rb-history"><summary>${d.stored} stored round${d.stored === 1 ? "" : "s"}</summary><ol>${d.history.map((h) => `<li>Round ${h.round}${h.top.length ? `: ${esc(h.top.join(" & "))}` : ""}</li>`).join("")}</ol></details>` : "";
   const invites = d?.keys ? `<div class="rb-invites"><span class="dial-label">Invite</span>
       <button class="ghost" data-invite="edit">Edit link</button><button class="ghost" data-invite="comment">Comment link</button><button class="ghost" data-invite="view">View link</button></div>` : "";
+  const ctx = room.spaceCtx;
+  const linkable = isRoomHost() && d && !d.space ? spaces.list.filter((s) => spaces.data[s.id] && spaceCan(s.id, "edit")) : [];
+  const spaceBlock = d?.space ? `<details class="rb-history rb-space" ${ctx?.lore.length ? "open" : ""}><summary>In space “${esc(ctx?.name || d.space.name)}” · ${ctx?.lore.length || 0} kept phrase${ctx?.lore.length === 1 ? "" : "s"}</summary>
+      ${ctx?.grammars.length ? `<p class="sp-sub">Its grammars: ${ctx.grammars.map((g) => `<button class="ghost" data-jam-gram="${esc(g.gid)}">${esc(g.doc.name)} v${g.ver}</button>`).join(" ")}</p>` : ""}
+      ${ctx?.lore.length ? `<ul class="sp-lore">${ctx.lore.map((l) => `<li><button class="sp-lore-use" data-sp-lore="${esc(l.id)}">“${esc(cleanWord(l.text))}”</button><span class="sp-sub">${esc(cleanWord(l.label || ""))}${l.by ? ` · ${esc(cleanWord(l.by))}` : ""}</span></li>`).join("")}</ul>` : `<p class="empty">No lore yet. Tap a word, then <i>Keep as lore</i>.</p>`}
+      <p class="rb-fine">Kept phrases go to the space. Bring one back in a workshop copy and it's marked as a callback.${isRoomHost() ? ` <button class="ghost subtle" id="rb-unspace">Take this jam out of the space</button>` : ""}</p>
+    </details>` : linkable.length ? `<div class="cp-row rb-space"><label class="bf-field"><span class="dial-label">Open in a space</span><select id="rb-space-pick">${linkable.map((s) => `<option value="${s.id}">${esc(spaces.data[s.id].name)}</option>`).join("")}</select></label><button class="ghost" id="rb-space">Link</button></div>` : "";
   bar.innerHTML = `
     <div class="rb-top">
       <div><span class="eyebrow">Jam · you're ${role === "edit" ? "an editor" : role === "comment" ? "a commenter" : "a viewer"}</span><span class="rb-code">${esc(room.code)}</span>${room.ws ? "" : ` <span class="rb-off">reconnecting…</span>`}</div>
@@ -340,6 +374,7 @@ function renderRoomBar() {
       </div>
     </div>
     ${invites}
+    ${spaceBlock}
     <label class="gb-name rb-name"><span class="dial-label">Your name</span><input id="rb-name" maxlength="${NAME_MAX}" value="${esc(me?.name ?? savedName())}" placeholder="so they know it's you"></label>
     <ul class="rb-players">${players}</ul>
     ${body}
@@ -367,6 +402,9 @@ document.addEventListener("click", (e) => {
     copy(jamLink(d.invite), `${cap(d.invite)} link copied. ${what}`);
   }
   else if (t.id === "rb-leave") leaveRoom();
+  else if (t.id === "rb-space") { const id = $("#rb-space-pick").value; roomSend({ t: "space", id, k: spaceEntry(id)?.k || "" }); }
+  else if (t.id === "rb-unspace") roomSend({ t: "unspace" });
+  else if (d.jamGram) { const g = state.room.spaceCtx?.grammars.find((x) => x.gid === d.jamGram); if (g && !jamReadOnly()) switchGrammar(g.doc); }
   else if (t.id === "rb-start" || t.id === "rb-daily") {
     const n = jamData().rules.moves;
     const c = t.id === "rb-daily" ? { ...dailyChallenge(), n } : { h: roomMe()?.name || "", n, s: fixedSnapshot() };

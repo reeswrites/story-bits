@@ -10,8 +10,9 @@ const freshId = (name) => {
   return id;
 };
 const isMine = (id) => !!library[id];
-// Built-in grammars carry no shared/pack flags into copies.
-const plain = (g) => { const c = clone(g); delete c.shared; for (const f of Object.values(c.forms)) delete f.pack; return c; };
+// Built-in grammars carry no shared/pack flags into copies, and no note of which space a fork
+// came from (upstream, see spaces.js).
+const plain = (g) => { const c = clone(g); delete c.shared; delete c.upstream; for (const f of Object.values(c.forms)) delete f.pack; return c; };
 
 const lib = { editing: null, tab: "basics", slot: null, formKey: null, beatKey: null, error: "", incoming: null };
 
@@ -117,7 +118,8 @@ function renderLibrary() {
   const card = (g) => {
     const mine = isMine(g.id);
     const from = g.forkedFrom ? resolveGrammar(g.forkedFrom)?.name || g.forkedFrom : "";
-    const tags = [mine ? "yours" : g.shared ? "shared" : "built in", from && `forked from ${from}`, ...(g.rules.constraints || []).map(describeConstraint)].filter(Boolean);
+    const up = upstreamOf(g);
+    const tags = [mine ? "yours" : g.shared ? "shared" : "built in", from && `forked from ${from}`, up && `from ${spaces.data[up.sp]?.name || "a space"} v${up.ver}`, ...(g.rules.constraints || []).map(describeConstraint)].filter(Boolean);
     return `<article class="gram${g.id === G.id ? " active" : ""}">
       <header><h3>${esc(g.name)}</h3><span class="count">${esc(tags[0])}</span></header>
       <p class="gram-desc">${esc(g.description || "")}</p>
@@ -131,9 +133,13 @@ function renderLibrary() {
         <button class="ghost" data-lib-suggest="${esc(g.id)}">Suggest ↗</button>
         <button class="ghost subtle" data-lib-delete="${esc(g.id)}">Delete</button>` : ""}
       </div>
+      ${mine ? publishControlHtml(g) : ""}
     </article>`;
   };
-  list.innerHTML = allGrammars().map(card).join("");
+  // This browser's grammars, and beside them each joined space's (spaces.js).
+  const spaceCols = spaceLibraryHtml();
+  list.classList.toggle("lib-cols", !!spaceCols);
+  list.innerHTML = spaceCols ? `<div class="lib-col"><h3 class="lib-col-h"><span class="dial-label">In this browser</span></h3>${allGrammars().map(card).join("")}</div>${spaceCols}` : allGrammars().map(card).join("");
 
   const inc = $("#lib-incoming");
   if (lib.incoming) {

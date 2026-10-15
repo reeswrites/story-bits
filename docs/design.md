@@ -6,7 +6,7 @@ a jam. This note records the model and the decisions behind it.
 ## Principles
 
 - **Single-player and local-first by default.** No account. Your grammars, word bank and cast
-  live in your browser; a piece lives in its link. Nothing touches a server unless you open a jam.
+  live in your browser; a piece lives in its link. Nothing touches a server unless you open a jam or put something in a space.
 - **Selection and recombination, not a blank page.** You choose among supplied words and lines,
   step them plain → strange, and add your own when the supply runs out.
 - **Game-ness emerges from collaboration.** Move limits, claps and winners are optional rules a jam
@@ -40,8 +40,8 @@ of that card, tunable the same way, to `maxDepth`.
 
 Local-first list of grammars: the built-ins plus anything you fork, write or import. Fork copies a
 grammar with `forkedFrom`; edits stay in your browser. Share is a link carrying the grammar;
-opening it offers to add it to your library. Grammars can also be published to the shared bank
-through the same issue → `accepted-pack` → PR pipeline as words.
+opening it offers to add it to your library. Publishing is a public space (below); the issue →
+`accepted-pack` → PR pipeline is only for curating what ships built in.
 
 Links to pieces name their grammar by id; a piece made with a custom grammar carries the grammar
 inline, so the link works for someone who doesn't have it.
@@ -64,9 +64,84 @@ An optional shared session, served by the room server (`party/`, partyserver on 
 The room server never interprets pieces or grammars. It stores JSON, enforces roles, phases and
 claps, and every client checks what it receives with the same parsers it uses for links.
 
+## Spaces
+
+A space is a persistent shared folder for a group: its grammars, word banks, kept pieces, cast,
+lore (kept phrases), comments and jam history. Jams open inside a space and draw from it. A
+**public** space is view-only to anyone with its short id, and is how grammars and pieces get
+published: `#sp=K7Q2M9XA` instead of a 13 KB `#grammar=` link, and no GitHub issue. The issue →
+`accepted-pack` → PR route stays only for curating what ships built in.
+
+### Decision: versioned grammars, not stable word ids (2026-10-15)
+
+A piece names its words by **pool index** (`p.who.w.n = 14`) and its beat lines by index too. A
+grammar that several people can edit would silently change every saved piece that points into it:
+remove one word and every later index shifts. Two ways out:
+
+1. **Stable word ids**: every pool word gets an id and pieces reference ids. That changes the value
+   type the whole engine passes around (options, stepping, diffs, moves, links), still needs a
+   mapping for every v1–v3 link, and doesn't cover beat lines, forms or rules changing under a
+   piece: a piece that reads well is the words *and* the grammar that frames them.
+2. **Versioned grammars**: a grammar in a space is a sequence of immutable versions. Publishing an
+   edit appends version *n + 1*; nothing is ever rewritten. A piece pins the version it was made
+   with.
+
+We chose **versions**. It's the rule the built-ins already follow (pools are append-only, so old
+indices stay put), generalized: instead of "never remove", "never change, only add a version". The
+engine is untouched: a pinned piece is indices into a document that can't move. Version numbers
+are assigned by the space server, so they can't collide or be forged; a publish names the version
+it was edited from and is refused if someone published in between (no silent overwrite). Moving a
+piece to a newer version is explicit: it opens in the new version only if it still parses there.
+
+Links:
+
+- **v1–v3 links are unchanged** and still open: v1/v2 have no grammar (Story Bits), v3 names a
+  built-in by id or carries a custom grammar inline (`gx`).
+- **v4** adds `gs` (space id) and `gv` (version) to a piece whose grammar came from a space. If
+  the space is public, the link drops `gx`: the page fetches that exact version by id, so the link
+  is short. If it's private, `gx` stays, so the link still opens for someone outside the space.
+- A v4 link to a version the page can't fetch (the space was deleted) falls back to `gx` if
+  present, else it won't open, the same as a v3 link to a grammar you don't have.
+
+### Model
+
+| part | what it holds | who may change it |
+|---|---|---|
+| grammars | each a list of immutable versions; the head is the latest | editors publish versions |
+| words | word packs: lists of checked bank entries for a grammar | editors |
+| pieces | kept pieces: v4 snapshots pinned to a version | editors |
+| cast | characters and their running bits | editors |
+| lore | kept phrases, from the page or from a jam in the space | editors; linked jams |
+| comments | notes on any item | commenters |
+| jams | the jams opened in the space, and their finished rounds | linked jams |
+
+Roles come from keys, like jams: **owner** (rename, public or private, retention, delete),
+**edit**, **comment**, **view**. A private space needs a key even to view; a public one is
+viewable by id. The space server, like the jam server, never interprets what it stores: it checks
+shapes and sizes; every client checks what a space sends with `checkGrammar`, `checkEntry` and
+`parseSnapshot` before using it.
+
+Local-first: nothing leaves the browser unless you create or join a space and put something in it.
+Joined spaces are listed in this browser only ("my spaces", with their keys). Export saves a
+space, every version included, to a file; import makes a new space from one.
+
+Retention is the owner's setting: **until I delete it** (the default for spaces), or a year or a
+month after it's last used. Choosing a time-based setting asks first, and the space shows the date
+it would go if unused, highlighted in the last weeks. Delete now removes everything at once.
+
+### Jams in a space
+
+A jam opened from a space is linked to it by its host (who holds an edit key). The jam server
+fetches the space's context (grammars, lore, cast) and relays it to everyone in the jam, so
+people in the jam don't need the space's keys. A phrase kept in the jam goes to the space's lore;
+finished workshop rounds go to its jam history. At a workshop reveal, a copy that reuses a kept
+phrase is marked as a **callback**.
+
 ## What's stored
 
-In your browser: grammars you've added, your word bank, your cast. In a jam: the room's piece,
+In your browser: grammars you've added, your word bank, your cast, and the spaces you've joined
+(with their keys). In a space: its grammars (every version), items, lore, comments (nicknames) and
+jam summaries; kept until the owner deletes it by default. In a jam: the room's piece,
 grammar, comments and rounds, in that room's storage in our Cloudflare account; nicknames only; a
 room is kept as long as its host chooses (a month or a year after last use, or until deleted; a year
 by default), and the host can wipe or delete it any time. Retention is a setting, not a limit.
@@ -78,4 +153,8 @@ Built: grammar documents and checks (`grammar.js`), Story Bits and Small Poems, 
 jams with roles, together mode, presence, comments, and workshop rounds with optional move limits,
 claps and critique notes. Packs carry grammars, words and forms.
 
-Next: a data API for publishing and browsing grammars and packs; lore that carries across jams.
+Spaces (2026-10-15): persistent shared folders with owner/edit/comment/view keys, versioned
+grammars and v4 links, pieces, word packs, cast, lore and comments, jams linked to a space (context
+relay, lore, round history, callbacks at reveals), public spaces with short links, export/import,
+owner-set retention (until deleted by default) with warnings. This replaces the planned data API
+and lore across jams. Tests: `party/test/spaces.test.mjs`.

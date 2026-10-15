@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "wrangler dev --port 8799",
     "deploy": "wrangler deploy",
-    "test": "node test/rooms.test.mjs"
+    "test": "node test/rooms.test.mjs && node test/spaces.test.mjs"
   },
   "dependencies": {
     "partyserver": "0.5.10"
