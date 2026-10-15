@@ -142,7 +142,9 @@ function options(schema, part, depth) {
   // A retired word (retired: true, see grammar-ops.js) keeps its place in the pool so saved pieces
   // still resolve it, but is never offered.
   const out = part.pool.map((_, i) => i).filter((i) => !part.pool[i].retired && (depth < MAX_DEPTH || !nests(part.pool[i])) && entryAllowed(part.pool[i], G));
-  if (!state.shared && !grammarClosed(G)) for (const e of bank) if (gOf(e) === G.id && e.s === schema && e.k === part.k && !checkEntry(e, G)) out.push(asValue(e));
+  // Your words for a grammar follow it into your copies of it (a fork, or the picker's own copy).
+  const yours = (e) => gOf(e) === G.id || (!!G.forkedFrom && gOf(e) === G.forkedFrom && !builtinHas(e, G));
+  if (!state.shared && !grammarClosed(G)) for (const e of bank) if (yours(e) && e.s === schema && e.k === part.k && !checkEntry({ ...e, g: G.id }, G)) out.push(asValue(e));
   // A constraint that rules out every word in a required slot: fall back to the whole pool.
   if (!out.length && !part.opt) return part.pool.map((_, i) => i).filter((i) => !part.pool[i].retired && (depth < MAX_DEPTH || !nests(part.pool[i])));
   return out;

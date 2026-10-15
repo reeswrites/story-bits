@@ -17,6 +17,14 @@
   const copy = (x) => JSON.parse(JSON.stringify(x));
   const fail = (error) => ({ error });
   const q = (t) => `'${t}'`;
+  // Free word tags (["family", "work"]): what sideways prefers to share. Short lowercase labels.
+  const TAGS_MAX = 8;
+  function cleanTags(list) {
+    if (!Array.isArray(list)) throw new Error("tags are a list of short words");
+    const out = [...new Set(list.map((x) => cleanWord(x).toLowerCase().replace(/[^a-z0-9 '-]/g, "").trim().slice(0, 24)).filter(Boolean))];
+    if (out.length > TAGS_MAX) throw new Error(`up to ${TAGS_MAX} tags a word`);
+    return out;
+  }
 
   // ---------- lookups ----------
   const cardOf = (g, key) => g?.cards?.find((c) => c.key === key);
@@ -48,17 +56,19 @@
   }
 
   // ---------- words ----------
-  // entry: { t, tier, v?, det?, pr? } as checkEntry takes it (s and k are filled in). A word that
+  // entry: { t, tier, v?, det?, pr?, tags? } as checkEntry takes it (s and k are filled in). A word that
   // matches a retired one brings it back at its old index instead of adding a second copy.
   function addWord(g, card, slot, entry) {
     return run(g, (d) => {
       const part = slotIn(d, card, slot);
       const e = { ...entry, s: card, k: slot };
-      delete e.g;
+      const tags = e.tags === undefined ? null : cleanTags(e.tags);
+      delete e.g; delete e.tags;
       if (typeof e.t === "string") e.t = cleanWord(e.t);
       const why = checkEntry(e, d);
       if (why) throw new Error(why);
       const word = poolEntry(e, d);
+      if (tags?.length) word.tags = tags;
       const at = part.pool.findIndex((p) => p.t.toLowerCase() === e.t.toLowerCase());
       if (at >= 0 && !part.pool[at].retired) throw new Error(`${q(e.t)} is already in ${where(d, card, part)}`);
       if (at >= 0) part.pool[at] = word;
@@ -85,7 +95,8 @@
       return `restored ${q(w.t)} to ${where(d, card, part)}`;
     });
   }
-  // Edit a word's tags: register (tier), mood (v), starting word (det), pronouns (pr: he/she/they).
+  // Edit a word's tags: register (tier), mood (v), starting word (det), pronouns (pr: he/she/they),
+  // and free tags (tags: ["family"], what sideways prefers to share; [] clears them).
   // Its text and place stay, so pieces that use it still point at it. null clears nothing: a slot's
   // own flags say which tags a word needs.
   function setWordTags(g, card, slot, index, tags) {
@@ -95,16 +106,18 @@
       const asEntry = { s: card, k: slot, t: w.t, tier: w.tier };
       if (w.v !== undefined) asEntry.v = w.v;
       if (w.det !== undefined) asEntry.det = w.det;
-      if (part.pronouns) asEntry.pr = w.p === "he" ? "he" : w.p === "she" ? "she" : "they";
+      if (part.pronouns) asEntry.pr = Object.keys(PRON).find((p) => PRON[p].p === w.p) || "they";
       const next = { ...asEntry };
       for (const key of ["tier", "v", "det", "pr"]) if (tags && key in tags) next[key] = tags[key];
-      if (tags && Object.keys(tags).some((k) => !["tier", "v", "det", "pr"].includes(k))) throw new Error("tags are register, mood, starting word and pronouns");
+      if (tags && Object.keys(tags).some((k) => !["tier", "v", "det", "pr", "tags"].includes(k))) throw new Error("tags are register, mood, starting word, pronouns and free tags");
+      const free = tags && "tags" in tags ? cleanTags(tags.tags) : w.tags;
       const why = checkEntry(next, d);
       if (why) throw new Error(why);
       const rebuilt = poolEntry(next, d);
+      if (free?.length) rebuilt.tags = free;
       for (const key of Object.keys(w)) if (!(key in rebuilt)) delete w[key];
       Object.assign(w, rebuilt);
-      const bits = ["tier", "v", "det", "pr"].filter((k) => tags && k in tags).map((k) => (k === "tier" ? TIER_NAMES[next.tier] : k === "v" ? `${MOOD_NAMES[next.v]} mood` : k === "det" ? `starts with ${next.det}` : `pronouns ${next.pr}`));
+      const bits = ["tier", "v", "det", "pr", "tags"].filter((k) => tags && k in tags).map((k) => (k === "tier" ? TIER_NAMES[next.tier] : k === "v" ? `${MOOD_NAMES[next.v]} mood` : k === "det" ? `starts with ${next.det}` : k === "pr" ? `pronouns ${next.pr}` : free.length ? `tags ${free.join(", ")}` : "no tags"));
       return `retagged ${q(w.t)} in ${where(d, card, part)}${bits.length ? `: ${bits.join(", ")}` : ""}`;
     });
   }
@@ -126,7 +139,7 @@
 
   // ---------- slots ----------
   const LETTERS = "abcdefghijklmnopqrstuvwxyz";
-  // def: { name, pool, k?, needs?, det?, mood?, pronouns?, trailing? }. A new slot is always
+  // def: { name, pool, k?, needs?, det?, mood?, pronouns?, trailing?, relation?, hint? }. A new slot is always
   // optional, so a piece made before it still works. position: 0..n in reading order (default end).
   function addSlot(g, card, def, position) {
     return run(g, (d) => {
@@ -136,7 +149,7 @@
       const k = def.k ?? [...LETTERS].find((c) => c !== "n" && !parts.some((p) => p.k === c));
       if (!k || k === "n" || parts.some((p) => p.k === k)) throw new Error(`slot key “${k}” is taken`);
       const part = { k, name: cleanWord(def.name), opt: true };
-      for (const f of ["needs", "det", "mood", "pronouns", "trailing"]) if (def[f] !== undefined) part[f] = copy(def[f]);
+      for (const f of ["needs", "det", "mood", "pronouns", "trailing", "relation", "hint"]) if (def[f] !== undefined) part[f] = copy(def[f]);
       part.pool = copy(def.pool || []);
       const at = position === undefined ? parts.length : position;
       if (!Number.isInteger(at) || at < 0 || at > parts.length) throw new Error(`position is 0–${parts.length}`);
@@ -185,7 +198,9 @@
     const c = copy(g);
     delete c.shared; delete c.upstream;
     for (const f of Object.values(c.forms || {})) delete f.pack;
-    c.name = `${cleanWord(g.name).slice(0, 40 - SUFFIX.length)}${SUFFIX}`;
+    // A copy of a copy ("Story Bits (yours)", from a jam, say) keeps its name.
+    const name = cleanWord(g.name);
+    c.name = name.endsWith(SUFFIX) ? name : `${name.slice(0, 40 - SUFFIX.length)}${SUFFIX}`;
     c.id = freshId(g, ctx);
     c.forkedFrom = g.id;
     const err = checkGrammar(c);
@@ -193,7 +208,7 @@
   }
   // Fork if needed, then apply an op (by name) to the result: { grammar, label, forked, from? }.
   function apply(g, op, ...args) {
-    if (typeof api[op] !== "function" || ["forkOnWrite", "apply", "remapPiece", "isLocal"].includes(op)) return fail(`no such edit “${op}”`);
+    if (typeof api[op] !== "function" || ["cleanTags", "forkOnWrite", "apply", "remapPiece", "isLocal"].includes(op)) return fail(`no such edit “${op}”`);
     const ctx = args.length && args[args.length - 1]?.__ctx ? args.pop().__ctx : {};
     const f = forkOnWrite(g, ctx);
     if (f.error) return f;
@@ -256,7 +271,7 @@
     return { snapshot: next };
   }
 
-  const api = { addWord, removeWord, restoreWord, setWordTags, setDeterminers, addSlot, removeSlot, forkOnWrite, apply, remapPiece, isLocal };
+  const api = { cleanTags, addWord, removeWord, restoreWord, setWordTags, setDeterminers, addSlot, removeSlot, forkOnWrite, apply, remapPiece, isLocal };
   if (typeof window !== "undefined") window.grammarOps = api;
   if (typeof globalThis !== "undefined") globalThis.grammarOps = api;
 })();

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-export const FILES = ["data.js", "grammar.js", "engine.js", "timeline.js", "grammar-ops.js"];
+export const FILES = ["data.js", "grammar.js", "engine.js", "timeline.js", "grammar-ops.js", "edit-plan.js"];
 
 export function loadEngine(files = FILES.map((f) => root + f)) {
   const ctx = vm.createContext({ console, TextEncoder, TextDecoder, btoa, atob, structuredClone });

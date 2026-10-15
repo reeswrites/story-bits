@@ -250,6 +250,73 @@ body.sheet-open .back-offer { bottom: calc(55vh + 12px); }
 .picker.sheet .pk-list { max-height: none; border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .pk-cur b.from-right, .pk-cur b.from-left { animation: none; } .pk-all > summary::before { transition: none; } }
 
+/* ---- change the grammar here (picker-edit.js): a disclosure in the picker, tabs inside ---- */
+.pk-edit { margin-top: 10px; border-top: 1px solid var(--rule); }
+.pk-edit > summary {
+  min-height: 44px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; cursor: pointer; list-style: none;
+  font: 500 13px "IBM Plex Mono", monospace; color: var(--ink);
+}
+.pk-edit > summary::-webkit-details-marker { display: none; }
+.pk-edit > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s; }
+.pk-edit[open] > summary::before { transform: rotate(90deg); }
+.pk-edit > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ge-note {
+  margin: 4px 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 14px; line-height: 1.4;
+  background: color-mix(in srgb, var(--accent) 9%, var(--paper)); border: 1.5px solid var(--accent); color: var(--ink);
+}
+.ge-note b { font-weight: 600; }
+.ge-undo { font: 500 13px "IBM Plex Mono", monospace; min-height: 36px; padding: 0 12px; margin-left: 4px; border-radius: 8px; border: 1.5px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; }
+.ge-tabs { display: flex; gap: 4px; margin: 2px 0 10px; }
+.ge-tabs button {
+  flex: 1; min-height: 40px; font: 500 13px "IBM Plex Mono", monospace; color: var(--ink); background: transparent;
+  border: 1.5px solid var(--rule); border-radius: 8px; cursor: pointer;
+}
+.ge-tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.ge-tabs button:focus-visible, .ge-btn:focus-visible, .ge-chip:focus-visible, .ge-x:focus-visible, .ge-undo:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ge-body { display: grid; gap: 10px; }
+.ge-add, .ge-word { display: grid; gap: 8px; }
+.ge-field { display: grid; gap: 4px; }
+.ge-field .dial-label { font-size: 10px; }
+.ge-text input, .ge-inline input, .ge-field select {
+  width: 100%; min-width: 0; font: inherit; font-size: 16px; color: var(--ink); background: var(--paper);
+  border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px 10px; min-height: 44px;
+}
+.ge-text input:focus, .ge-inline input:focus, .ge-field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.ge-tags-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.ge-tags-row .ge-field { flex: 1 1 130px; }
+.ge-seg { flex-wrap: wrap; border-radius: 12px; }
+.ge-seg label { min-height: 40px; display: inline-flex; align-items: center; }
+.ge-check { margin: 0; min-height: 1.2em; font-size: 13px; color: var(--ink-2); }
+.ge-bad, .ge-err { color: var(--accent-text); }
+.ge-err { margin: 0 0 8px; }
+.ge-go { min-height: 44px; justify-self: start; font: 500 14px "IBM Plex Mono", monospace; padding: 0 16px; border-radius: 8px; border: 1.5px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.ge-go:hover { background: color-mix(in srgb, var(--accent) 85%, black); }
+.ge-btn, .ge-inline button {
+  font: 500 13px "IBM Plex Mono", monospace; min-height: 44px; padding: 0 12px; text-align: left;
+  border-radius: 8px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer;
+}
+.ge-btn:hover, .ge-inline button:hover, .ge-undo:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.ge-row { margin: 0; }
+.ge-help { margin: 0; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+.ge-help i { font-style: italic; }
+.ge-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ge-chip {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 36px; padding: 0 4px 0 10px; border-radius: 999px;
+  font: 500 13px "IBM Plex Mono", monospace; color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule); cursor: pointer;
+}
+button.ge-chip { padding-right: 10px; border-style: dashed; border-color: var(--ink-2); }
+.ge-chip.on { cursor: default; border-color: var(--ink); }
+.ge-x { border: 0; background: none; color: var(--ink); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 12px; }
+.ge-x:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.ge-inline { display: flex; gap: 6px; }
+.ge-slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ge-slots li { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--rule); }
+.ge-offers { display: grid; gap: 6px; }
+.ge-offer[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
+.picker.sheet .pk-edit[open] { padding-bottom: 8px; }
+.lib-words .bank-word.retired { text-decoration: line-through; border-style: dashed; }
+@media (prefers-reduced-motion: reduce) { .pk-edit > summary::before { transition: none; } }
+
 /* ---- word bank ---- */
 .bank-wrap { margin-top: 56px; }
 .bank-head { display: flex; align-items: baseline; gap: 12px; }

@@ -79,6 +79,14 @@ function surprise(slot, path) {
 function addWord(slot, path) {
   const at = locate(slot, state.pick[slot], path);
   if (!at) return;
+  // A relation slot takes this phrase inside it ("your uncle" → "your uncle's dentist"): the
+  // zoom-out move, not a fresh phrase.
+  if (partOf(at.schema, at.k).relation) {
+    const head = [...path.slice(0, -1), "n"];
+    const c = moveCandidates(slot, head, "zoom").find((x) => x.changed.includes(path.join(".")));
+    if (c) { applyCand({ ...c, slot }); state.sel = { slot, path: head, occ: 0 }; render(); }
+    return;
+  }
   const pick = { ...state.pick };
   const saved = state.pick;
   state.pick = pick;
@@ -308,6 +316,7 @@ const selKey = (s) => (!s ? null : s.beat ? `beat|${s.beat}` : `${s.slot}|${s.pa
 let pickerFor = null; // { key, sel } of the word the open picker belongs to
 function focusKeyOf(a) {
   if (!(a instanceof Element)) return null;
+  if (a.dataset.geKey) return `[data-ge-key="${CSS.escape(a.dataset.geKey)}"]`;
   if (a.dataset.act) return `[data-act="${a.dataset.act}"]`;
   if (a.dataset.opt !== undefined) return `[data-opt="${a.dataset.opt}"]`;
   if (a.dataset.move) return `[data-move="${a.dataset.move}"]`;
@@ -397,6 +406,7 @@ function drawPicker(el) {
       <input name="own" maxlength="60" placeholder="Your own ${esc(part.name)}…" aria-label="Your own ${esc(part.name)}">
       <button type="submit">Use</button>
     </form>`}
+    ${grammarEditHtml(at)}
     ${marksHtml()}
     ${state.room ? jamPickerHtml(`${sel.slot}|${sel.path.join(".")}`, label(cur)) : ""}`;
   el.classList.toggle("readonly", !!state.room && jamReadOnly());

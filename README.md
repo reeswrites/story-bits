@@ -41,7 +41,7 @@ One undo timeline holds everything you do, not only the piece: tuning words and 
 
 Pieces made with your own grammar pin the version they were made with, so they keep opening here whichever version is current; their links still carry the grammar itself, so they open anywhere.
 
-In a together jam, undoing a change to the piece goes out like any other edit and only puts back what you changed (others' edits stay). A grammar edit that changes the jam's piece isn't on your timeline (it would undo everyone's piece), but it's still a version you can restore. Starting or leaving a jam or a challenge clears the piece's steps (they were about another piece); the rest of the timeline stays. The timeline lasts until you reload; drafts and versions are kept.
+In a together jam, undoing a change to the piece goes out like any other edit and only puts back what you changed (others' edits stay). A grammar edit from the picker is on your timeline too: undoing it puts the jam's grammar (and piece) back for everyone, as one whole-grammar change. A grammar edit from the library editor that changes the jam's piece isn't on your timeline, but it's still a version you can restore. Starting or leaving a jam or a challenge clears the piece's steps (they were about another piece); the rest of the timeline stays. The timeline lasts until you reload; drafts and versions are kept.
 
 ## Writing alone
 
@@ -54,6 +54,12 @@ In a together jam, undoing a change to the piece goes out like any other edit an
 
   Tap a move to see three previews, each the whole line with the change marked; **More** shows the next three. The one you're looking at (hovered or focused; on a phone, the first) shows in the piece itself, ghosted with a dashed outline, and nothing changes until you tap it (or press **1**–**3**). Moves with nothing to offer don't show. In a challenge each preview says which move it would be, or that it's over your limit. **All words** opens the full list grouped by register; *Surprise me*, *Pin* (shuffles keep it), *Remove*, or type your own.
 - **On a phone** the picker is a bottom sheet that takes at most about half the screen; the line you're tuning scrolls into view above it, and every button is a 44px target.
+- **Change the grammar here**, at the bottom of a word's picker, changes the grammar itself right where you're tuning, without a trip to the library:
+  - **Words**: add a word to this slot (with its register, and the mood, starting word or pronouns the slot needs; the word bank's checks say as you type whether it can go in), or **Never offer ‘uncle’ again**. A retired word stays in pieces that already have it, so old links still read the same; **↺** brings it back.
+  - **This word**: its register, mood, starting word, pronouns and free tags (*family*, *work*: Sideways prefers words that share one).
+  - **Slots**: this slot's starting words (*your*, *the*, *my*); the card's optional slots, with **Remove**; and new optional slots around the head word: a describing word before it, a detail after it, or a relation (*your uncle* → *your uncle's dentist*, then **Zoom out** or the `+ relation` chip uses it).
+
+  Editing a built-in, shared or space grammar makes your own copy first (*Story Bits (yours)*) and switches to it with the piece as it was, so nothing on screen changes except the edit; the sheet says so the first time. Every edit is one step on the timeline (the copy included) and a version of your grammar: ⌘Z, the bottom bar's Undo, or **Undo** right in the sheet takes it back. In a together jam editors' changes go to everyone as a whole-grammar change; commenters and viewers don't see the section, and it's hidden in a challenge or workshop (it isn't a move).
 - **Tap the rest of a sentence** to tune that line (the beat) the same way.
 - **Ghost slots**: with a word selected, dashed `+ adverb` / `+ clause` chips show where an optional word can go.
 - **Nesting**: some words hold a whole phrase of another card (*blames …*, *brought back from …*), tunable inside. Hover a word to see which phrase it belongs to.
@@ -92,7 +98,7 @@ The grammar makes pieces well-formed. Whether one works is up to the dial, the w
 
 ### The library
 
-Under **Grammars & spaces** on the page: **Fork** any grammar into your library, **Edit** your copy (basics, words per slot, beat lines, constraints, the dial, the landing rule, or the whole thing as JSON; every edit is checked before it saves), **Copy link** to share it (the link offers it to whoever opens it, never adds it silently), or **Suggest** it for everyone.
+Under **Grammars & spaces** on the page: **Fork** any grammar into your library, **Edit** your copy (basics, words per slot, beat lines, constraints, the dial, the landing rule, or the whole thing as JSON; every edit is checked before it saves; removing a word retires it, so pieces that use it keep it), **Copy link** to share it (the link offers it to whoever opens it, never adds it silently), or **Suggest** it for everyone.
 
 ## Jams
 
@@ -138,13 +144,13 @@ Publishing is a public space now. The GitHub route below is only for curating wh
 
 ## Run it
 
-No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), then the page: `library.js`, `history.js` (the timeline's stores and the History sheet), `jam.js`, `spaces.js`, `app.js`.
+No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), `grammar-ops.js` (grammar edits: words, slots, tags, fork-on-write, piece remap; no DOM), `edit-plan.js` (what the picker's grammar section offers; no DOM), then the page: `library.js`, `history.js` (the timeline's stores and the History sheet), `picker-edit.js` (the picker's *Change the grammar here*), `jam.js`, `spaces.js`, `app.js`.
 
 ```bash
 python3 -m http.server 4290
 ```
 
-Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js`, `engine.js` and `timeline.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases, escaping, and history (the timeline, grammar versions and their storage, pinned versions, drafts, step labels). Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
+Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js`, `engine.js` and `timeline.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases, escaping, history (the timeline, grammar versions and their storage, pinned versions, drafts, step labels), grammar edits (every op, tombstones, forks, piece remaps) and the picker's grammar section (who sees it, its offers, the add form's checks, one step per fork and edit). Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
 
 ```bash
 node --test test/*.test.mjs

@@ -60,8 +60,11 @@ function histNote() {
 // Move the piece from one side of a step to the other, touching only what the step changed.
 function histPut(want, was) {
   if (want.G !== was.G) {
+    // Another version of the same grammar, or your copy of it (the picker's fork-on-write): the
+    // word you're on and your pins still mean the same (render drops any that no longer fit).
+    const kin = kinGrammars(want.G, was.G);
     useGrammar(want.G);
-    Object.assign(state, { grammar: G.id, pick: clone(want.pick), beats: { ...want.beats }, form: want.form, len: want.len, dial: want.dial, seed: want.seed, sel: null, pins: [] });
+    Object.assign(state, { grammar: G.id, pick: clone(want.pick), beats: { ...want.beats }, form: want.form, len: want.len, dial: want.dial, seed: want.seed, ...(!kin && { sel: null, pins: [] }) });
     renderBankForm(); renderBank(); renderShelf(); renderLibrary();
     return;
   }

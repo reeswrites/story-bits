@@ -181,7 +181,7 @@ function editorHtml(g) {
     const slots = g.cards.map((c) => `<optgroup label="${esc(c.label)}">${g.schemas[c.key].parts.map((p) => `<option value="${c.key}.${p.k}" ${lib.slot === `${c.key}.${p.k}` ? "selected" : ""}>${esc(c.label)}: ${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
     body = `<label class="bf-field"><span class="dial-label">Slot</span><select data-lib-slot>${slots}</select></label>
       <p class="bf-hint">${esc(part?.hint || "")}${part?.opt ? " Optional slot." : " Required slot: keep at least one word."}</p>
-      <div class="lib-words">${(part?.pool || []).map((w, i) => `<span class="bank-word t${w.tier}${entryAllowed(w, g) ? "" : " filtered"}" title="${TIER_NAMES[w.tier]}${w.v !== undefined ? ` · ${MOOD_NAMES[w.v]}` : ""}${entryAllowed(w, g) ? "" : " · filtered out by this grammar's constraints"}">${w.det ? `<span class="bw-slot">${esc(w.det)}</span>` : ""}${esc(w.t)}<button class="bw-x" data-lib-unword="${i}" aria-label="Remove ${esc(w.t)}">✕</button></span>`).join("")}</div>
+      <div class="lib-words">${(part?.pool || []).map((w, i) => w.retired ? `<span class="bank-word retired" title="retired: kept for pieces that use it, never offered">${esc(w.t)}<button class="bw-x" data-lib-reword="${i}" aria-label="Bring back ${esc(w.t)}">↺</button></span>` : `<span class="bank-word t${w.tier}${entryAllowed(w, g) ? "" : " filtered"}" title="${TIER_NAMES[w.tier]}${w.v !== undefined ? ` · ${MOOD_NAMES[w.v]}` : ""}${entryAllowed(w, g) ? "" : " · filtered out by this grammar's constraints"}">${w.det ? `<span class="bw-slot">${esc(w.det)}</span>` : ""}${esc(w.t)}<button class="bw-x" data-lib-unword="${i}" aria-label="Remove ${esc(w.t)}">✕</button></span>`).join("")}</div>
       <form class="lib-add" data-lib-addword>
         <input name="t" maxlength="60" placeholder="a new word for ${esc(part?.name || "this slot")}">
         <select name="tier">${TIER_NAMES.map((n, i) => `<option value="${i}">${n}</option>`).join("")}</select>
@@ -263,7 +263,13 @@ document.addEventListener("click", (e) => {
   else if (d.libAccept) { if (d.libAccept === "no") { lib.incoming = null; renderLibrary(); } else acceptIncoming(d.libAccept === "use"); }
   else if (d.libClose !== undefined) { lib.editing = null; renderLibrary(); }
   else if (d.libTab) { lib.tab = d.libTab; lib.error = ""; renderLibrary(); }
-  else if (d.libUnword !== undefined) { const [s, k] = lib.slot.split("."); const g0 = library[id]; const w = g0.schemas[s].parts.find((p) => p.k === k).pool[+d.libUnword]; editGrammar(id, (g) => { g.schemas[s].parts.find((p) => p.k === k).pool.splice(+d.libUnword, 1); }, `removed “${w?.t}” from ${slotName(s, k, g0)}`); }
+  // Removing a word retires it (a tombstone, grammar-ops.js): pieces name words by their place in
+  // the list, so nothing after it shifts.
+  else if (d.libUnword !== undefined || d.libReword !== undefined) {
+    const [s, k] = lib.slot.split(".");
+    const r = grammarOps[d.libUnword !== undefined ? "removeWord" : "restoreWord"](library[id], s, k, +(d.libUnword ?? d.libReword));
+    if (r.error) { lib.error = r.error; renderLibrary(); } else editGrammar(id, (g) => { Object.assign(g, r.grammar); }, r.label);
+  }
   else if (d.libUnline !== undefined) editGrammar(id, (g) => { const b = g.forms[lib.formKey].beats[lib.beatKey || Object.keys(g.forms[lib.formKey].beats)[0]]; (d.mood ? b.lines[d.mood] : b.lines).splice(+d.libUnline, 1); }, `removed a line from ${beatLabel(id)}`);
   else if (d.libUnpair !== undefined) editGrammar(id, (g) => { g.rules.pairs.splice(+d.libUnpair, 1); }, `removed the pair ${library[id].rules.pairs[+d.libUnpair]?.label || ""}`.trim());
   else if (d.libDupform) editGrammar(id, (g) => { const k = `${d.libDupform}-copy`.slice(0, 20).replace(/-+$/, ""); let key = k, i = 2; while (g.forms[key]) key = `${k}${i++}`; g.forms[key] = { ...clone(g.forms[d.libDupform]), name: `${g.forms[d.libDupform].name} (copy)`.slice(0, 40) }; lib.formKey = key; }, `duplicated the form ${library[id].forms[d.libDupform]?.name}`);

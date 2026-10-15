@@ -288,8 +288,8 @@ is never returned. Labels read like `added 'ugly' to Who · descriptor`, for the
 is a tombstone: `{ ..., retired: true }` stays in the pool. `options()` never offers a retired word
 and `checkGrammar` requires at least one live word per slot, but `entryOf` still resolves the index,
 so an old snapshot renders unchanged. Re-adding a retired word's text revives it in place.
-A pool holds at most 300 entries, tombstones included. (The library editor's `✕` still splices;
-it should call `removeWord` instead.)
+A pool holds at most 300 entries, tombstones included. The library editor's `✕` retires too (and
+shows retired words struck through, with ↺).
 
 | call | what it does |
 |---|---|
@@ -307,6 +307,26 @@ it should call `removeWord` instead.)
 `library`, not built in, not `shared`"; built-ins, pack grammars and space versions are forked.
 Wiring order for a caller: `apply` → save `grammar` (library or a new space version) → `remapPiece`
 the open snapshot → record `label` in the undo timeline. Tests: `test/grammar-ops.test.mjs`.
+
+Also: `addWord` and `setWordTags` take free `tags` (short lowercase labels, up to 8, `[]` clears; what
+Sideways prefers to share); `addSlot` keeps `relation` and `hint`; a fork of a grammar already named
+“… (yours)” keeps its name.
+
+**The picker's section** (`edit-plan.js`, pure; `picker-edit.js`, the page). *Change the grammar
+here* is a disclosure at the bottom of a word's picker with three tabs: **Words** (add to this slot
+with `wordEntry` + `addCheck`, the word bank's checks; retire or restore), **This word**
+(`setWordTags`), **Slots** (`setDeterminers`, `removeSlot`, and `slotOffers`: a describing word
+before the head, a detail after it, a relation at the start that nests the card's own phrase).
+`editBlocked({ game, room })` hides it in a challenge or workshop and for jam commenters and
+viewers. `editHere(op, ...args)` is the one path: `forkOnWrite` → the op → save the fork (if any)
+and the edit to the library (`saveLibrary`, so each is a local version) → `mergeSteps` makes the
+saves ONE timeline step, with `piece = { from, to }` so undo puts the old grammar object and the
+piece back exactly → `remapPiece` + `applySnapshot` keeping the selection → `quietly(render)`. In a
+together jam the render sends the new grammar as a whole doc (`jamAfterRender`); undo does the
+same in reverse. `kinGrammars(a, b)` (versions or copies of each other) keeps the selection and
+pins across that undo, and for jam members receiving the change. A `+ relation` ghost runs the
+zoom-out move (the phrase goes inside) rather than building a fresh nest. Your word bank's words for
+a grammar are offered in your copies of it (`options`). Tests: `test/edit-plan.test.mjs`.
 
 ## What's stored
 

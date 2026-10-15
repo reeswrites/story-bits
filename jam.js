@@ -159,8 +159,9 @@ function applyDoc() {
   try {
     applySnapshot(parsed);
     Object.assign(state, keep);
-    // A different grammar: your selection and pins were in the old one.
-    if (G !== before) { state.sel = null; state.pins = []; renderBankForm(); renderBank(); renderShelf(); renderLibrary(); }
+    // A different grammar: your selection and pins were in the old one (unless it's a version or
+    // copy of it, as when an editor changes the grammar from the picker; render drops what's gone).
+    if (G !== before) { if (!kinGrammars(G, before)) { state.sel = null; state.pins = []; } renderBankForm(); renderBank(); renderShelf(); renderLibrary(); }
     render();
   } finally {
     room.applying = false;
