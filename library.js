@@ -26,24 +26,22 @@ function forkGrammar(id) {
   // Every grammar says what's worth keeping; a fork of one that doesn't gets the fallback, spelled out.
   copy.keep = clone(keepOf(src));
   library[copy.id] = copy;
-  saveLibrary();
+  saveLibrary(`forked ${src.name}`);
   switchGrammar(copy.id);
   openEditor(copy.id);
   toast(`Forked ${src.name}. It's yours to change.`);
 }
 
-// Apply a change to a draft of one of your grammars; save it only if the result is valid.
-function editGrammar(id, mutate) {
+// Apply a change to a draft of one of your grammars; save it only if the result is valid. Each
+// saved edit is a new version, and a step on the timeline labelled `label` (history.js).
+function editGrammar(id, mutate, label = "edited") {
   const draft = clone(library[id]);
   try { mutate(draft); } catch (e) { lib.error = String(e.message || e); renderLibrary(); return false; }
+  if (same(draft, library[id])) return true;
   const err = checkGrammar(draft);
   if (err) { lib.error = err; renderLibrary(); return false; }
   lib.error = "";
-  library[id] = draft;
-  saveLibrary();
-  if (G.id === id) refreshActive(draft);
-  renderLibrary();
-  return true;
+  return saveGrammarVersion(id, draft, label);
 }
 // The grammar in use changed under the piece: keep the piece if it still parses, else start fresh.
 function refreshActive(g) {
@@ -64,13 +62,16 @@ function refreshActive(g) {
   render();
 }
 
+// Deleting is a step on the timeline like any other: undo brings it back, every version too.
 function deleteGrammar(id) {
-  if (!isMine(id) || !confirm(`Delete “${library[id].name}” from your library? Links that carry it will still open.`)) return;
+  if (!isMine(id)) return;
+  const name = library[id].name;
   delete library[id];
-  saveLibrary();
+  saveLibrary(`deleted ${name}`);
   if (G.id === id) switchGrammar("story-bits");
   if (lib.editing === id) lib.editing = null;
   renderLibrary();
+  toast(`Deleted “${name}”. Undo brings it back; links that carry it still open.`);
 }
 
 const grammarLink = (g) => `${location.origin}${location.pathname}#grammar=${b64(JSON.stringify(plain(g)))}`;
@@ -96,7 +97,7 @@ function acceptIncoming(use) {
   if (same && JSON.stringify(plain(same)) === JSON.stringify(g)) { if (use) switchGrammar(g.id); renderLibrary(); return; }
   if (same) { g.forkedFrom = g.forkedFrom || g.id; g.id = freshId(g.name); }
   library[g.id] = g;
-  saveLibrary();
+  saveLibrary(`added ${g.name}`);
   toast(`Added “${g.name}” to your library.`);
   if (use) switchGrammar(g.id);
   renderLibrary();
@@ -132,6 +133,7 @@ function renderLibrary() {
         <button class="ghost" data-lib-fork="${esc(g.id)}">Fork</button>
         <button class="ghost" data-lib-share="${esc(g.id)}">Copy link</button>
         ${mine ? `<button class="ghost" data-lib-edit="${esc(g.id)}">${lib.editing === g.id ? "Editing" : "Edit"}</button>
+        <button class="ghost" data-lib-history="${esc(g.id)}">History${versions[g.id]?.list.length > 1 ? ` · v${versions[g.id].cur}` : ""}</button>
         <button class="ghost" data-lib-suggest="${esc(g.id)}">Suggest ↗</button>
         <button class="ghost subtle" data-lib-delete="${esc(g.id)}">Delete</button>` : ""}
       </div>
@@ -232,11 +234,24 @@ function editorHtml(g) {
   return `<div class="lib-head"><h3>Editing “${esc(g.name)}”</h3><button class="pk-x" data-lib-close aria-label="Close editor">✕</button></div>${tabs}${err}<div class="lib-body">${body}</div>`;
 }
 
+// ---------- labels for the timeline ----------
+const FIELD_LABELS = { name: "renamed the grammar", description: "changed the description", headline: "changed the headline label", line: "changed the headline template" };
+function beatLabel(id) {
+  const f = library[id].forms[lib.formKey];
+  const b = f && f.beats[lib.beatKey || Object.keys(f.beats)[0]];
+  return b ? `${f.name} · ${b.name}` : "a beat";
+}
+// The constraints as the Rules tab now has them: "constraints: no e; short words".
+function constraintsLabel() {
+  const on = [...document.querySelectorAll("[data-lib-con]")].filter((b) => b.checked).map((b) => ({ lipogram: "lipogram", startsWith: "alliteration", maxSyllables: "short words", closed: "closed" })[b.dataset.libCon]);
+  return on.length ? `constraints: ${on.join(", ")}` : "no constraints";
+}
+
 // ---------- events ----------
 document.addEventListener("click", (e) => {
   if (!(e.target instanceof Element)) return;
   const t = e.target.closest("button");
-  if (!t || !t.closest("#library")) return;
+  if (!t || !t.closest("#library") || t.dataset.libHistory) return;
   const d = t.dataset;
   const id = lib.editing;
   if (d.libUse) switchGrammar(d.libUse);
@@ -248,14 +263,14 @@ document.addEventListener("click", (e) => {
   else if (d.libAccept) { if (d.libAccept === "no") { lib.incoming = null; renderLibrary(); } else acceptIncoming(d.libAccept === "use"); }
   else if (d.libClose !== undefined) { lib.editing = null; renderLibrary(); }
   else if (d.libTab) { lib.tab = d.libTab; lib.error = ""; renderLibrary(); }
-  else if (d.libUnword !== undefined) editGrammar(id, (g) => { const [s, k] = lib.slot.split("."); g.schemas[s].parts.find((p) => p.k === k).pool.splice(+d.libUnword, 1); });
-  else if (d.libUnline !== undefined) editGrammar(id, (g) => { const b = g.forms[lib.formKey].beats[lib.beatKey || Object.keys(g.forms[lib.formKey].beats)[0]]; (d.mood ? b.lines[d.mood] : b.lines).splice(+d.libUnline, 1); });
-  else if (d.libUnpair !== undefined) editGrammar(id, (g) => { g.rules.pairs.splice(+d.libUnpair, 1); });
-  else if (d.libDupform) editGrammar(id, (g) => { const k = `${d.libDupform}-copy`.slice(0, 20).replace(/-+$/, ""); let key = k, i = 2; while (g.forms[key]) key = `${k}${i++}`; g.forms[key] = { ...clone(g.forms[d.libDupform]), name: `${g.forms[d.libDupform].name} (copy)`.slice(0, 40) }; lib.formKey = key; });
+  else if (d.libUnword !== undefined) { const [s, k] = lib.slot.split("."); const g0 = library[id]; const w = g0.schemas[s].parts.find((p) => p.k === k).pool[+d.libUnword]; editGrammar(id, (g) => { g.schemas[s].parts.find((p) => p.k === k).pool.splice(+d.libUnword, 1); }, `removed “${w?.t}” from ${slotName(s, k, g0)}`); }
+  else if (d.libUnline !== undefined) editGrammar(id, (g) => { const b = g.forms[lib.formKey].beats[lib.beatKey || Object.keys(g.forms[lib.formKey].beats)[0]]; (d.mood ? b.lines[d.mood] : b.lines).splice(+d.libUnline, 1); }, `removed a line from ${beatLabel(id)}`);
+  else if (d.libUnpair !== undefined) editGrammar(id, (g) => { g.rules.pairs.splice(+d.libUnpair, 1); }, `removed the pair ${library[id].rules.pairs[+d.libUnpair]?.label || ""}`.trim());
+  else if (d.libDupform) editGrammar(id, (g) => { const k = `${d.libDupform}-copy`.slice(0, 20).replace(/-+$/, ""); let key = k, i = 2; while (g.forms[key]) key = `${k}${i++}`; g.forms[key] = { ...clone(g.forms[d.libDupform]), name: `${g.forms[d.libDupform].name} (copy)`.slice(0, 40) }; lib.formKey = key; }, `duplicated the form ${library[id].forms[d.libDupform]?.name}`);
   else if (d.libApplyjson !== undefined) {
     let next;
     try { next = JSON.parse($("#lib-json").value); } catch (err) { lib.error = `JSON: ${err.message}`; renderLibrary(); return; }
-    editGrammar(id, (g) => { for (const k of Object.keys(g)) delete g[k]; Object.assign(g, next, { id }); });
+    editGrammar(id, (g) => { for (const k of Object.keys(g)) delete g[k]; Object.assign(g, next, { id }); }, "edited the JSON");
     if (!lib.error) toast("Grammar updated.");
   }
 });
@@ -276,13 +291,13 @@ document.addEventListener("submit", (e) => {
       const w = { t, tier: +v("tier"), ...(part.mood && { v: +v("v") }), ...(part.det && { det: v("det") }), ...(part.pronouns && PRON[v("pr")]) };
       if (part.pool.some((x) => x.t.toLowerCase() === t.toLowerCase())) throw new Error("that word is already here");
       part.pool.push(w);
-    });
+    }, `added “${t}” to ${slotName(s, k, library[id])}`);
   } else if (f.dataset.libAddline !== undefined) {
     const t = String(v("t") || "").trim();
     if (!t) return;
-    editGrammar(id, (g) => { const fm = g.forms[lib.formKey]; const b = fm.beats[lib.beatKey || Object.keys(fm.beats)[0]]; (f.dataset.mood ? b.lines[f.dataset.mood] : b.lines).push({ tier: +v("tier"), t }); });
+    editGrammar(id, (g) => { const fm = g.forms[lib.formKey]; const b = fm.beats[lib.beatKey || Object.keys(fm.beats)[0]]; (f.dataset.mood ? b.lines[f.dataset.mood] : b.lines).push({ tier: +v("tier"), t }); }, `added a line to ${beatLabel(id)}`);
   } else if (f.dataset.libAddpair !== undefined) {
-    editGrammar(id, (g) => { g.rules.pairs.push({ a: v("a"), b: v("b"), on: v("on"), label: `${g.cards.find((c) => c.key === v("a")).label.toLowerCase()} ↔ ${g.cards.find((c) => c.key === v("b")).label.toLowerCase()}` }); });
+    editGrammar(id, (g) => { g.rules.pairs.push({ a: v("a"), b: v("b"), on: v("on"), label: `${g.cards.find((c) => c.key === v("a")).label.toLowerCase()} ↔ ${g.cards.find((c) => c.key === v("b")).label.toLowerCase()}` }); }, "added a pair");
   }
 }, true);
 
@@ -294,11 +309,11 @@ document.addEventListener("change", (e) => {
   if (d.libSlot !== undefined) { lib.slot = el.value; renderLibrary(); }
   else if (d.libForm !== undefined) { lib.formKey = el.value; lib.beatKey = null; renderLibrary(); }
   else if (d.libBeat !== undefined) { lib.beatKey = el.value; renderLibrary(); }
-  else if (d.libField) editGrammar(id, (g) => { const val = d.libField === "line" ? el.value : cleanWord(el.value) || (d.libField === "name" ? g.name : ""); if (val) g[d.libField] = val; else delete g[d.libField]; });
-  else if (d.libKeep) editGrammar(id, (g) => { const k = { ...keepOf(g) }; k[d.libKeep] = d.libKeep === "card" ? el.value : cleanWord(el.value) || k[d.libKeep]; g.keep = k; });
-  else if (d.libRule) editGrammar(id, (g) => { g.rules[d.libRule] = cleanWord(el.value); });
-  else if (d.libLabel !== undefined) editGrammar(id, (g) => { g.rules.dialLabels[+d.libLabel] = cleanWord(el.value) || g.rules.dialLabels[+d.libLabel]; });
-  else if (d.libLanding !== undefined) editGrammar(id, (g) => { g.rules.landing = el.checked; });
+  else if (d.libField) editGrammar(id, (g) => { const val = d.libField === "line" ? el.value : cleanWord(el.value) || (d.libField === "name" ? g.name : ""); if (val) g[d.libField] = val; else delete g[d.libField]; }, FIELD_LABELS[d.libField] || `changed the ${d.libField}`);
+  else if (d.libKeep) editGrammar(id, (g) => { const k = { ...keepOf(g) }; k[d.libKeep] = d.libKeep === "card" ? el.value : cleanWord(el.value) || k[d.libKeep]; g.keep = k; }, "changed what's kept");
+  else if (d.libRule) editGrammar(id, (g) => { g.rules[d.libRule] = cleanWord(el.value); }, "renamed the dial");
+  else if (d.libLabel !== undefined) editGrammar(id, (g) => { g.rules.dialLabels[+d.libLabel] = cleanWord(el.value) || g.rules.dialLabels[+d.libLabel]; }, `renamed dial setting ${+d.libLabel + 1}`);
+  else if (d.libLanding !== undefined) editGrammar(id, (g) => { g.rules.landing = el.checked; }, el.checked ? "forms must land" : "forms needn't land");
   else if (d.libCon || d.libConval) {
     editGrammar(id, (g) => {
       const box = (t) => document.querySelector(`[data-lib-con="${t}"]`);
@@ -309,6 +324,6 @@ document.addEventListener("change", (e) => {
       if (box("maxSyllables").checked) cs.push({ type: "maxSyllables", n: Math.max(1, Math.min(6, Math.round(+val("maxSyllables")) || 2)) });
       if (box("closed").checked) cs.push({ type: "closed" });
       if (cs.length) g.rules.constraints = cs; else delete g.rules.constraints;
-    });
+    }, constraintsLabel());
   }
 });

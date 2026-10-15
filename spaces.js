@@ -214,7 +214,7 @@ function forkFromSpace(id, gid) {
   // Where it came from, so publishing it back can add a version instead of a second grammar.
   copy.upstream = `${id}/${gid}@${it.head}`;
   library[copy.id] = copy;
-  saveLibrary();
+  saveLibrary(`forked ${it.data.name} v${it.head} from a space`);
   switchGrammar(copy.id);
   renderLibrary();
   toast(`“${copy.name}” is in your library now, from version ${it.head}. Edit it there; publish it back as a new version when you're ready.`);
@@ -236,7 +236,7 @@ async function publishGrammar(localId, spaceId, asVersion) {
   const out = await spaceOp(spaceId, "put", { item: { kind: "grammar", base, data } });
   if (!out) return;
   const it = spaceGrammar(spaceId, data.id);
-  if (it) { library[localId] = { ...g, upstream: `${spaceId}/${data.id}@${it.head}` }; saveLibrary(); }
+  if (it) { library[localId] = { ...g, upstream: `${spaceId}/${data.id}@${it.head}` }; saveLibrary(`published as v${it.head} of a space's grammar`); }
   toast(`Published “${g.name}” to ${spaces.data[spaceId].name} as version ${it?.head ?? 1}. Pieces made with older versions keep theirs.`);
   renderLibrary();
 }

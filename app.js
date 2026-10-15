@@ -11,8 +11,11 @@ function loadLibrary() {
     return out;
   } catch { return {}; }
 }
-function saveLibrary() {
+// Saving also saves a version of each grammar that changed (history.js), labelled for the
+// timeline; it returns those timeline entries.
+function saveLibrary(label) {
   try { localStorage.setItem(LIB_KEY, JSON.stringify(Object.values(library))); } catch {}
+  return syncVersions(label);
 }
 library = loadLibrary();
 
@@ -25,8 +28,9 @@ function saveBank() {
   try { localStorage.setItem(BANK_KEY, JSON.stringify(bank)); } catch {}
 }
 bank = loadBank();
-// Adds checked, new words. Returns how many were added.
-function addToBank(entries) {
+// Adds checked, new words, as one step on the timeline. Returns how many were added.
+function addToBank(entries, label) {
+  const before = clone(bank);
   let n = 0;
   for (let e of entries) {
     e = { ...e, g: e.g || "story-bits" };
@@ -36,6 +40,7 @@ function addToBank(entries) {
     n++;
   }
   saveBank();
+  if (n) remember("bank", label || (n === 1 ? bankLabel(bank[bank.length - 1], true) : `added ${n} words to the word bank`), before, bank);
   return n;
 }
 
@@ -352,7 +357,9 @@ function addToShelf(entry) {
 function keepBit() {
   const card = keepOf(G).card;
   if (!state.pick[card]) return;
+  const before = clone(shelf);
   const c = addToShelf({ g: G.id, card, ph: clone(state.pick[card]), bits: [bitLine(context())] });
+  if (!same(before, shelf)) remember("shelf", `kept ${keptText(card, c.ph)}`, before, shelf);
   toast(`Kept. ${cap(keptText(card, c.ph))}: ${headlineCount(c.bits.length)} so far.`);
 }
 // Pin a kept phrase and shuffle everything else: a new piece around something kept.
@@ -360,6 +367,7 @@ function tellAnother(i) {
   const c = shelf[i];
   if (!c || c.g !== G.id || c.card !== keepOf(G).card) return;
   pinPhrase(c.card, c.ph);
+  hintNext(`told another with “${keptText(c.card, c.ph)}”`);
   reroll(SLOTS.map((x) => x.key).filter((k) => k !== c.card));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -369,7 +377,7 @@ function toHash() {
   // Mid-challenge, the link holds the challenge and your copy, so a reload picks up where you were.
   if (state.game) return "#p=" + b64(JSON.stringify(playPayload()));
   // Comparing (and not playing): keep the set of versions in the link.
-  if (state.compare) return "#cmp=" + b64(JSON.stringify({ c: state.compare.c, e: state.compare.entries.map((e) => ({ name: e.name, me: e.me })) }));
+  if (state.compare && !state.compare.drafts) return "#cmp=" + b64(JSON.stringify({ c: state.compare.c, e: state.compare.entries.map((e) => ({ name: e.name, me: e.me })) }));
   return "#" + b64(JSON.stringify(snapshot()));
 }
 
@@ -382,7 +390,7 @@ function importPack(h) {
   try {
     const pack = JSON.parse(unb64(h));
     const words = Array.isArray(pack.words) ? pack.words : [];
-    const n = addToBank(words);
+    const n = addToBank(words, `added words from “${cleanWord(pack.name) || "a pack"}”`);
     toast(n ? `Added ${n} word${n === 1 ? "" : "s"} from “${cleanWord(pack.name) || "a pack"}” to your word bank.` : "Those words are already in your bank.");
   } catch { toast("That pack link couldn't be read."); }
 }
@@ -516,6 +524,8 @@ function renderCompare() {
   if (!cmp) return;
   if (!state.game) history.replaceState(null, "", toHash());
   document.body.classList.toggle("room-compare", !!state.room);
+  document.body.classList.toggle("cmp-drafts", !!cmp.drafts);
+  if (cmp.drafts) { renderDraftCompare(el, cmp); return; }
   const top = Math.max(0, ...cmp.entries.map((e) => e.votes));
   const original = `<article class="version original"><header><h3>The original</h3><span class="count">${esc(cmp.c.d ? `today's bit · ${cmp.c.h}` : cmp.c.h ? `from ${cmp.c.h}` : "start")}</span></header>${staticHtml(cmp.c.s, [])}</article>`;
   const startHtml = currentLore().length ? staticHtml(cmp.c.s, []) : "";
@@ -533,6 +543,21 @@ function renderCompare() {
     </article>`;
   }).join("");
   $("#compare-empty").hidden = cmp.entries.length > 0;
+  $("#cmp-count").textContent = `${cmp.entries.length + 1} versions · swipe`;
+}
+// Drafts side by side (history.js): now first, then each draft, its changes from now marked.
+function renderDraftCompare(el, cmp) {
+  const now = `<article class="version original"><header><h3>Now</h3><span class="count">the piece as it is</span></header>${staticHtml(cmp.c.s, [])}</article>`;
+  el.innerHTML = now + cmp.entries.map((e) => {
+    const ch = draftChanges(cmp.c.s, e.me);
+    return `<article class="version">
+      <header><h3>${esc(e.name)}</h3><span class="count">${ch ? `${ch.length} change${ch.length === 1 ? "" : "s"}` : e.me.g !== cmp.c.s.g ? "another grammar" : "another shape"}</span></header>
+      ${staticHtml(e.me, ch || [])}
+      <div class="vote"><button class="clap" data-draft-open="${esc(e.id)}">Open this draft</button></div>
+    </article>`;
+  }).join("");
+  $("#compare-empty").hidden = true;
+  $("#cmp-count").textContent = `${cmp.entries.length + 1} versions · swipe`;
 }
 function compareLink() {
   const cmp = state.compare;
@@ -540,75 +565,7 @@ function compareLink() {
 }
 
 
-// ---------- undo ----------
-// A local history of tuning: words, beats, form, length, dial, seed and grammar. render() notes
-// each change as a step { from, to }. Undo puts back only what that step changed and renders as
-// usual, so in a together jam it goes out as ordinary patches (and leaves others' edits alone),
-// and in a challenge it counts like putting a change back. Changes that arrive from a jam move
-// the baseline without adding a step. Starting or leaving a jam or challenge starts a new history.
-const HISTORY_MAX = 200;
-const undoStack = [], redoStack = [];
-let histNow = null; // { at, key, ctx }: the piece as of the last render
-let histQuiet = false;
-const histCtx = () => (state.game ? `g:${challengeId(state.game.c)}` : state.room ? `r:${state.room.code}` : "solo");
-const histTake = () => ({ G, pick: clone(state.pick), beats: { ...state.beats }, form: state.form, len: state.len, dial: state.dial, seed: state.seed });
-const histKey = (h) => JSON.stringify([h.G.id, srcOf.get(h.G)?.ver, h.pick, h.beats, h.form, h.len, h.dial, h.seed]);
-function histNote() {
-  const ctx = histCtx();
-  const at = histTake();
-  const key = histKey(at);
-  if (!histNow || histNow.ctx !== ctx) { undoStack.length = redoStack.length = 0; histNow = { at, key, ctx }; renderUndo(); return; }
-  if (histNow.at.G === at.G && histNow.key === key) { renderUndo(); return; }
-  if (!histQuiet && !state.room?.applying) {
-    undoStack.push({ from: histNow.at, to: at });
-    if (state.sel) countTune();
-    if (undoStack.length > HISTORY_MAX) undoStack.shift();
-    redoStack.length = 0;
-  }
-  histNow = { at, key, ctx };
-  renderUndo();
-}
-// Move the piece from one side of a step to the other, touching only what the step changed.
-function histPut(want, was) {
-  if (want.G !== was.G) {
-    useGrammar(want.G);
-    Object.assign(state, { grammar: G.id, pick: clone(want.pick), beats: { ...want.beats }, form: want.form, len: want.len, dial: want.dial, seed: want.seed, sel: null, pins: [] });
-    renderBankForm(); renderBank(); renderShelf(); renderLibrary();
-    return;
-  }
-  for (const k of new Set([...Object.keys(want.pick), ...Object.keys(was.pick)])) {
-    if (!same(want.pick[k], was.pick[k]) && want.pick[k]) state.pick[k] = clone(want.pick[k]);
-  }
-  const beats = { ...state.beats };
-  for (const k of new Set([...Object.keys(want.beats), ...Object.keys(was.beats)])) {
-    if (want.beats[k] === was.beats[k]) continue;
-    if (want.beats[k] === undefined) delete beats[k]; else beats[k] = want.beats[k];
-  }
-  state.beats = beats;
-  for (const f of ["form", "len", "dial", "seed"]) if (want[f] !== was[f]) state[f] = want[f];
-  state.len = Math.max(1, Math.min(maxLen(), state.len));
-}
-function histMove(from, to, back) {
-  const step = from.pop();
-  if (!step || !canUndo()) { if (step) from.push(step); return; }
-  if (back) histPut(step.from, step.to); else histPut(step.to, step.from);
-  to.push(step);
-  histQuiet = true;
-  try { render(); } finally { histQuiet = false; }
-}
-const canUndo = () => !(state.room && jamReadOnly());
-const undo = () => histMove(undoStack, redoStack, true);
-const redo = () => histMove(redoStack, undoStack, false);
-function renderUndo() {
-  const u = $("#undo"), r = $("#redo");
-  if (!u) return;
-  // Shown only when there's something to undo or redo, so the first view stays calm.
-  u.hidden = !undoStack.length || !canUndo();
-  r.hidden = !redoStack.length || !canUndo();
-  // Don't drop keyboard focus when the button you pressed goes away.
-  const a = document.activeElement;
-  if ((a === u && u.hidden) || (a === r && r.hidden)) (!u.hidden ? u : !r.hidden ? r : $("#shuffle")).focus();
-}
+// Undo, redo and the rest of history: history.js.
 
 // ---------- calm layout: folds, menus, the first-run hint ----------
 // Rules and the sections below the page fold away; whether each is open is remembered in this
@@ -734,6 +691,7 @@ function offerBack() {
 function backToLast() {
   $("#back-offer").hidden = true;
   const h = stored(LAST_KEY);
+  hintNext("back to your last piece");
   if (!h || !fromHash(h)) { toast("That piece couldn't be opened."); return; }
   state.sel = null;
   renderBankForm(); renderBank(); renderShelf(); renderLibrary();
@@ -829,7 +787,8 @@ function grammarOptions() {
     return gs.length ? `<optgroup label="${esc(v.name)}">${gs.map((it) => `<option value="@${v.id}/${esc(it.gid)}" ${src?.sp === v.id && G.id === it.gid ? "selected" : ""}>${esc(it.data.name)} v${it.head}</option>`).join("")}</optgroup>` : "";
   }).join("");
   // A pinned older version, or a grammar that came with a piece, still shows as in use.
-  const here = (allGrammars().includes(G) || (src && spaceGrammar(src.sp, G.id)?.data === G)) ? "" : `<option selected>${esc(G.name)}${src ? ` v${src.ver}` : ""}</option>`;
+  const lv = !src && localVer.get(G);
+  const here = (allGrammars().includes(G) || (src && spaceGrammar(src.sp, G.id)?.data === G)) ? "" : `<option selected>${esc(G.name)}${src ? ` v${src.ver}` : lv ? ` v${lv.n} (an older version)` : ""}</option>`;
   return here + mine + groups;
 }
 
@@ -990,13 +949,11 @@ document.addEventListener("click", (e) => {
     else setValue(s.slot, s.path, pickerVals[+t.dataset.opt]);
     return;
   }
-  if (inPicker) return;
+  if (inPicker || t.closest("#history") || ["tb-undo", "tb-redo", "tb-history"].includes(t.id) || t.dataset.libHistory || t.dataset.draftOpen || ["undo", "redo", "history-btn", "save-draft"].includes(t.id)) return;
   if (t.classList.contains("word")) { select(t.dataset.slot, pathOf(t), t); return; }
   if (t.dataset.beatBtn) { selectBeat(t.dataset.beatBtn); return; }
   if (t.dataset.foldBtn) { setDrawer(t, t.getAttribute("aria-expanded") !== "true"); return; }
-    if (t.id === "back-last") { backToLast(); return; }
-  if (t.id === "undo") { undo(); return; }
-  if (t.id === "redo") { redo(); return; }
+  if (t.id === "back-last") { backToLast(); return; }
   if (t.classList.contains("fh-x")) { hideFirstHint(true); return; }
   if (t.dataset.add) { addWord(t.dataset.add, pathOf(t)); return; }
   if (state.sel && !t.closest(".controls")) state.sel = null;
@@ -1005,11 +962,21 @@ document.addEventListener("click", (e) => {
   else if (t.id === "daily") { const c = parseChallenge(dailyChallenge()); if (c) startGame(c); }
   else if (t.dataset.dial) { state.dial = +t.dataset.dial; reroll(SLOTS.map((x) => x.key)); }
   else if (t.dataset.another !== undefined) tellAnother(+t.dataset.another);
-  else if (t.dataset.forget !== undefined) { shelf.splice(+t.dataset.forget, 1); saveShelf(); renderShelf(); }
-  else if (t.dataset.unbank !== undefined) { bank.splice(+t.dataset.unbank, 1); saveBank(); renderBank(); updateBankForm(); render(); }
+  else if (t.dataset.forget !== undefined) {
+    const before = clone(shelf);
+    const [c] = shelf.splice(+t.dataset.forget, 1);
+    saveShelf(); renderShelf();
+    if (c) { remember("shelf", `forgot ${withGrammar(resolveGrammar(c.g) || G, () => keptText(c.card, c.ph))}`, before, shelf); toast("Forgotten. Undo brings it back."); }
+  }
+  else if (t.dataset.unbank !== undefined) {
+    const before = clone(bank);
+    const [w] = bank.splice(+t.dataset.unbank, 1);
+    saveBank(); renderBank(); updateBankForm(); render();
+    if (w) remember("bank", bankLabel(w, false), before, bank);
+  }
   else if (t.id === "len-up") setLen(state.len + 1);
   else if (t.id === "len-down") setLen(state.len - 1);
-  else if (t.id === "shuffle") reroll(SLOTS.map((x) => x.key));
+  else if (t.id === "shuffle" || t.id === "tb-shuffle") { state.sel = null; reroll(SLOTS.map((x) => x.key)); }
   else if (t.id === "retell") retell();
   else if (t.id === "keep") keepBit();
   else if (t.id === "challenge") { const pnl = $("#challenge-panel"); pnl.hidden = !pnl.hidden; if (!pnl.hidden) $("#ch-name").focus(); }
@@ -1032,7 +999,7 @@ document.addEventListener("click", (e) => {
   }
   else if (t.id === "cmp-copy") copy(compareLink(), "Compare link copied. Everyone who opens it sees all the versions.");
   else if (t.id === "cmp-play") startGame(state.compare.c, undefined, "");
-  else if (t.id === "cmp-close") { state.compare = null; $("#compare").hidden = true; render(); }
+  else if (t.id === "cmp-close") { state.compare = null; $("#compare").hidden = true; document.body.classList.remove("cmp-drafts"); render(); }
   else if (t.dataset.clap !== undefined) {
     const e = state.compare.entries[+t.dataset.clap];
     if (state.room) roomSend({ t: "clap", to: e.id });
@@ -1154,6 +1121,8 @@ addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHi
   renderParts();
   await loadPacks();
   shelf = loadShelf();
+  loadDrafts();
+  loadVersions();
   const h = location.hash.slice(1);
   const [kind, data] = h.includes("=") ? [h.slice(0, h.indexOf("=")), h.slice(h.indexOf("=") + 1)] : ["", h];
   const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };

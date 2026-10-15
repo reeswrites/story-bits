@@ -527,11 +527,14 @@ function validPhrase(schema, ph, depth) {
 // The grammar fields of a snapshot. v3 names the grammar by id, carried inline (gx) when it isn't
 // built in, so the link works anywhere. v4 (docs/design.md, "Spaces") also pins a space grammar's
 // version: gs = the space, gv = the version. A public space's version can be fetched by anyone,
-// so its links leave gx out and stay short.
+// so its links leave gx out and stay short. A grammar in your library also pins its local
+// version (lv, see timeline.js), so a piece keeps working whichever version is current here;
+// elsewhere, gx carries it.
 function grammarFields(g) {
   const src = srcOf.get(g);
   const builtin = GRAMMARS[g.id] === g;
-  return { v: src ? 4 : 3, g: g.id, ...(src && { gs: src.sp, gv: src.ver }), ...(!builtin && !src?.pub && { gx: g }) };
+  const lv = !builtin && !src && localVer.get(g);
+  return { v: src ? 4 : 3, g: g.id, ...(src && { gs: src.sp, gv: src.ver }), ...(lv && { lv: lv.n }), ...(!builtin && !src?.pub && { gx: g }) };
 }
 // Everything that makes a piece what it is. v2 added the form and hand-tuned beats; v3 the
 // grammar; v4 the grammar's version, for grammars from a space.
@@ -542,8 +545,9 @@ function snapshot() {
   };
 }
 // The grammar a snapshot names: a pinned space version (fetched ahead by prefetchRefs, or carried
-// inline), built in, in your library, carried inline (checked), or the one in use.
-function resolveGrammar(id = "story-bits", inline, ref) {
+// inline), built in, a pinned local version, in your library, carried inline (checked), or the
+// one in use.
+function resolveGrammar(id = "story-bits", inline, ref, lv) {
   if (ref) {
     const v = knownVersion(ref, id);
     if (v) return v;
@@ -554,6 +558,7 @@ function resolveGrammar(id = "story-bits", inline, ref) {
     return null;
   }
   if (GRAMMARS[id]) return GRAMMARS[id];
+  if (Number.isInteger(lv) && localDocs[`${id}@${lv}`]) return localDocs[`${id}@${lv}`];
   if (library[id]) return library[id];
   if (inline && inline.id === id && !checkGrammar(inline)) return inline;
   if (G && G.id === id) return G;
@@ -563,13 +568,18 @@ function resolveGrammar(id = "story-bits", inline, ref) {
 // grammar field) still load; so do v3 and v4.
 function parseSnapshot(x) {
   const { p, d, s, l, pn = [], f, b = {}, g: gid = "story-bits", gx } = x || {};
-  const gram = resolveGrammar(gid, gx, refOf(x));
+  let gram = resolveGrammar(gid, gx, refOf(x), x?.lv);
   if (!gram) return null;
+  const fits = (gm) => {
+    const fm = gm.forms[f ?? Object.keys(gm.forms)[0]];
+    return !!fm && Number.isInteger(l) && l >= 1 && l <= fm.stanzas.length && !!p && withGrammar(gm, () => gm.cards.every((c) => validPhrase(c.key, p[c.key], 0)));
+  };
+  // Your copy of the grammar changed since (and that version is gone): the one in the link fits.
+  if (!fits(gram) && gx && gx !== gram && gx.id === gid && !GRAMMARS[gid] && !refOf(x) && !checkGrammar(gx)) gram = gx;
   const fk = f ?? Object.keys(gram.forms)[0];
   const fm = gram.forms[fk];
   if (!fm || ![0, 1, 2].includes(d) || !Number.isInteger(s)) return null;
-  if (!Number.isInteger(l) || l < 1 || l > fm.stanzas.length) return null;
-  if (!p || !withGrammar(gram, () => gram.cards.every((c) => validPhrase(c.key, p[c.key], 0)))) return null;
+  if (!fits(gram)) return null;
   const beats = b && typeof b === "object" ? Object.fromEntries(Object.entries(b).filter(([k, i]) => fm.beats[k] && Number.isInteger(i) && i >= 0)) : {};
   const out = {
     ...grammarFields(gram),
@@ -616,6 +626,17 @@ function addVersion(sp, ver, doc, pub) {
   return doc;
 }
 const knownVersion = (ref, gid) => spaceVersions[verKey(ref.gs, gid, ref.gv)] || null;
+
+// ---------- local grammar versions (your library) ----------
+// app.js keeps every saved version of your grammars (timeline.js); the engine only needs to find
+// a pinned one and say which version a grammar object is.
+const localDocs = {}; // "gid@n" -> grammar
+const localVer = new WeakMap(); // grammar object -> { id, n }
+function setLocalVersion(doc, id, n) {
+  localDocs[`${id}@${n}`] = doc;
+  localVer.set(doc, { id, n });
+  return doc;
+}
 
 // ---------- challenges: copies, moves, compare ----------
 // See app.js ("the friends game") for how challenges are played.

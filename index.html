@@ -80,11 +80,13 @@
           <button id="undo" class="icon" hidden aria-label="Undo" title="Undo (⌘Z / Ctrl+Z)"><span aria-hidden="true">↶</span></button>
           <button id="redo" class="icon" hidden aria-label="Redo" title="Redo (⇧⌘Z / Ctrl+Shift+Z)"><span aria-hidden="true">↷</span></button>
         </span>
+        <button id="history-btn" class="tool" aria-haspopup="dialog">History</button>
         <details class="menu more">
           <summary class="tool">More <span aria-hidden="true" class="caret">▾</span></summary>
           <div class="menu-list" role="group" aria-label="More">
             <button id="retell" class="menu-item">Retell <kbd>r</kbd> <span class="menu-note">new sentences, same words</span></button>
             <button id="keep" class="menu-item">Keep this character <kbd>k</kbd> <span class="menu-note">adds them to the cast</span></button>
+            <button id="save-draft" class="menu-item">Save a draft <span class="menu-note">keep this piece as it is, to come back to</span></button>
             <button id="share" class="menu-item">Copy link <span class="menu-note">this exact piece</span></button>
           </div>
         </details>
@@ -105,8 +107,9 @@
     </section>
 
     <section id="compare" class="compare" aria-labelledby="cmp-h" hidden>
-      <div class="bank-head"><h2 id="cmp-h">Compare</h2><button id="cmp-close" class="pk-x" aria-label="Close compare">✕</button></div>
-      <p class="help">Same start, different versions. Changed words and beats are highlighted. Clap for your favorites, out loud or here.</p>
+      <div class="bank-head"><h2 id="cmp-h">Compare</h2><span id="cmp-count" class="count cmp-count"></span><button id="cmp-close" class="pk-x" aria-label="Close compare">✕</button></div>
+      <p class="help cmp-help">Same start, different versions. Changed words and beats are highlighted. Clap for your favorites, out loud or here.</p>
+      <p class="help cmp-help-drafts">Your drafts beside the piece as it is now. What each draft has that now doesn't is highlighted.</p>
       <div class="cmp-add">
         <textarea id="cmp-paste" rows="2" placeholder="Paste everyone's version links here (a whole group-chat dump works)"></textarea>
         <div class="cp-row">
@@ -179,6 +182,14 @@
       <p>Story Bits began with one rule for funny stories: things that happened that don't quite fit, landing somewhere it's safe to laugh. That rule is now one grammar among others. Nothing here needs an account; your grammars, words and cast stay in this browser unless you put them in a space.</p>
     </footer>
   </main>
+  <nav class="thumb-bar" aria-label="Undo, shuffle, redo, history">
+    <button id="tb-undo" disabled aria-label="Undo"><span aria-hidden="true">↶</span><span class="tb-name">Undo</span></button>
+    <button id="tb-shuffle" class="tb-main" aria-label="Shuffle"><span class="tb-name">Shuffle</span></button>
+    <button id="tb-redo" disabled aria-label="Redo"><span aria-hidden="true">↷</span><span class="tb-name">Redo</span></button>
+    <button id="tb-history" aria-haspopup="dialog"><span aria-hidden="true">☰</span><span class="tb-name">History</span></button>
+  </nav>
+  <div id="hist-scrim" class="hist-scrim" hidden></div>
+  <div id="history" class="hist" role="dialog" aria-modal="true" aria-labelledby="hist-h" tabindex="-1" hidden></div>
   <div id="picker" class="picker" role="dialog" aria-labelledby="pk-title" tabindex="-1" hidden></div>
   <div id="first-hint" class="first-hint" role="note" hidden><span>tap to change</span><button class="fh-x" aria-label="Dismiss hint">✕</button></div>
   <div id="back-offer" class="back-offer" role="status" hidden><span>New piece.</span> <button id="back-last">Back to your last piece</button></div>
@@ -187,7 +198,9 @@
   <script src="data.js"></script>
   <script src="grammar.js"></script>
   <script src="engine.js"></script>
+  <script src="timeline.js"></script>
   <script src="library.js"></script>
+  <script src="history.js"></script>
   <script src="jam.js"></script>
   <script src="spaces.js"></script>
   <script src="app.js"></script>

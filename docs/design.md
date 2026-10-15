@@ -171,9 +171,63 @@ people in the jam don't need the space's keys. A phrase kept in the jam goes to 
 finished workshop rounds go to its jam history. At a workshop reveal, a copy that reuses a kept
 phrase is marked as a **callback**.
 
+## History: everything is reversible (2026-10-15)
+
+Every action can be taken back, and the design assumes most of it happens on a phone.
+
+**One timeline** (`timeline.js`, pure; `history.js`, the page). An entry is plain data
+`{ kind, label, ... }`; `history.js` keeps an undoer per kind. Kinds: `piece` (render() notes
+each change as `{ from, to }`, as the calm-view undo did; undo puts back only what the step
+changed), `grammar` (`{ id, before, after }` are version numbers, `null` meaning not in the
+library; `piece` rides along when the edit moved the piece, so one undo puts both back), `bank`,
+`shelf`, `drafts` (whole before/after values). Labels are made where the change is known:
+`pieceLabel(from, to)` diffs two pieces (one word: *“sad” → “ugly” in Who · descriptor*; added,
+removed, rerolled a card, shuffled, form, dial, length, retold, a line), `bankLabel`, and each
+library edit passes its own (*constraints: lipogram*). An action can name the next piece step with
+`hintNext(label)` (*opened draft “x”*).
+
+API for other parts of the page (the picker's fork-on-write, say):
+
+```js
+remember(kind, label, before, after)   // one entry; undo puts `before` back, redo `after`
+onUndo(kind, (value, entry, back) => {})  // how to put a value of that kind back (return false: can't)
+hintNext(label)                        // a label for the next change to the piece
+saveGrammarVersion(id, doc, label)     // a new version of a library grammar, on the timeline
+```
+
+Jams: a piece step undone in a together jam is an ordinary edit, so it goes out as patches and
+leaves others' edits alone; remote applies move the baseline without adding a step; read-only
+roles can't undo piece steps (their bank and drafts still can). A grammar edit that changes the
+jam's piece is saved as a version but not put on the timeline. Entering or leaving a jam or a
+challenge drops piece steps only.
+
+**Local grammar versions.** Each library grammar has a store `{ cur, list: [{ n, at, label, doc }] }`
+in its own key (`story-bits-grammar-versions`), up to 50 versions. `library[id]` is always the
+current version's object, so a grammar object *is* a version: `setLocalVersion(doc, id, n)` tells
+the engine, and `grammarFields` adds `lv: n` to snapshots of library grammars (alongside `gx`, so
+links still carry the grammar). `resolveGrammar` finds a pinned version before the current one;
+if the version is gone and the current one doesn't fit, `parseSnapshot` falls back to the link's
+own `gx`. `saveLibrary(label)` notices every change (forks, edits, imports, spaces) and saves a
+version. Undo moves `cur`; restore saves the old doc again as a new version; nothing is deleted
+except by pruning, which drops the oldest but never the current version or one a draft pins.
+Storage is a delta chain: the first version whole, each later one as what changed two levels deep
+(a card's schema, a form, the rules): word edits to a fork take about a tenth of whole copies.
+On a full quota, fewer
+versions are kept. This mirrors spaces (every published version kept, pieces pin `gs/gv`), but
+local and private.
+
+**Drafts**: named snapshots, up to 30, in `story-bits-drafts`. A draft of your own grammar drops
+`gx` and pins `lv` (kept from pruning). Compare shows drafts beside the current piece using the
+challenge compare cards, with `changes()` marked when grammar, form and length match.
+
+**Phone layout.** Below 640px: a fixed bottom bar (Undo · Shuffle · Redo · History, ≥44px targets,
+safe-area insets) replaces the inline buttons and hides while the picker sheet or History is open;
+History is a full-height sheet (a side panel on wider screens), a modal dialog with focus kept
+inside; Compare becomes horizontal scroll-snap cards. Desktop keeps the inline controls.
+
 ## What's stored
 
-In your browser: grammars you've added, your word bank, your kept shelf, and the spaces you've joined
+In your browser: grammars you've added and their versions, drafts, your word bank, your kept shelf, and the spaces you've joined
 (with their keys). In a space: its grammars (every version), items, lore, comments (nicknames) and
 jam summaries; kept until the owner deletes it by default. In a jam: the room's piece,
 grammar, comments and rounds, in that room's storage in our Cloudflare account; nicknames only; a

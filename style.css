@@ -677,3 +677,111 @@ body.show-parts #bit .part-label { opacity: 1; }
   .word.pulse { animation: none; outline: 3px solid var(--accent); outline-offset: 2px; }
   .part-label, .bit { transition: none; }
 }
+
+/* ---- history: the thumb bar, the History sheet, drafts, versions ---- */
+/* Phones: undo, shuffle, redo and history sit in a bar at the bottom, in reach of a thumb. */
+.thumb-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 48; display: none; gap: 6px;
+  padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  background: var(--card); border-top: 1.5px solid var(--ink); box-shadow: 0 -10px 24px -16px rgba(0, 0, 0, .45);
+}
+.thumb-bar button {
+  flex: 1 1 0; min-width: 44px; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  font: 500 12px/1.2 "IBM Plex Mono", monospace; color: var(--ink); background: transparent;
+  border: 1.5px solid var(--ink); border-radius: 10px; cursor: pointer; touch-action: manipulation;
+}
+.thumb-bar button > span[aria-hidden] { font-size: 20px; line-height: 1; }
+.thumb-bar .tb-main { flex-grow: 1.6; background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-size: 15px; }
+.thumb-bar button:disabled { border-style: dashed; border-color: var(--rule); color: var(--ink-2); cursor: default; }
+.thumb-bar button:active:not(:disabled) { transform: translateY(1px); }
+@media (max-width: 639px) {
+  .thumb-bar { display: flex; }
+  main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .actions #shuffle, .actions .undo-pair, .actions #history-btn { display: none; }
+  .toast, .back-offer { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  body:has(#picker.sheet:not([hidden])) .thumb-bar, body.hist-open .thumb-bar { display: none; }
+}
+@media (max-width: 520px) {
+  .menu-list, .actions .menu-list { bottom: calc(84px + env(safe-area-inset-bottom)); }
+}
+body.in-game #tb-shuffle, body.jam-readonly #tb-shuffle, body.jam-readonly #tb-undo, body.jam-readonly #tb-redo { display: none; }
+
+/* The History sheet: full height on phones, a panel at the side on wider screens. */
+.hist-scrim { position: fixed; inset: 0; z-index: 64; background: rgba(20, 14, 8, .38); }
+.hist {
+  position: fixed; z-index: 65; top: 0; right: 0; bottom: 0; width: min(440px, 100vw);
+  display: flex; flex-direction: column; background: var(--card); color: var(--ink);
+  border-left: 1.5px solid var(--ink); box-shadow: -18px 0 40px -18px rgba(0, 0, 0, .5);
+  padding-top: env(safe-area-inset-top);
+}
+.hist:focus { outline: none; }
+.hist-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 12px 0 18px; }
+.hist-head h2 { margin: 0; font-size: 26px; font-weight: 600; }
+.hist-head .pk-x { width: 44px; height: 44px; }
+.hist-tabs { display: flex; gap: 2px; padding: 4px 12px 0; border-bottom: 1px solid var(--rule); }
+.hist-tabs button {
+  flex: 1 1 0; min-height: 44px; font: 500 13px "IBM Plex Mono", monospace; border: 0; background: none; color: var(--ink-2);
+  cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.hist-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.hist-body {
+  flex: 1; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 14px 18px calc(24px + env(safe-area-inset-bottom));
+}
+.hist-body .empty { margin: 8px 0; }
+.hist-steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+.hist-steps .tool { min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 14px; }
+.hist-steps .tool:disabled { border-style: dashed; border-color: var(--rule); color: var(--ink-2); cursor: default; }
+.hist-steps .primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-list > li { border-bottom: 1px solid var(--rule); }
+.hist-row {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 52px; padding: 8px 6px;
+  text-align: left; font: inherit; font-size: 16px; line-height: 1.3; color: var(--ink); background: none; border: 0; cursor: pointer;
+}
+.hist-row:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.hist-row:disabled { cursor: default; }
+.hr-label { overflow-wrap: anywhere; }
+.hr-meta { font: 12px/1.4 "IBM Plex Mono", monospace; color: var(--ink-2); }
+/* Undone steps: still there to redo. Marked with a dashed rule and italics, not faded. */
+.hist-list li.undone { border-left: 3px dashed var(--accent); padding-left: 8px; }
+.hist-list li.undone .hr-label { font-style: italic; }
+.hist-now { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 0 !important; }
+.hist-now::before, .hist-now::after { content: ""; flex: 1; border-top: 2px solid var(--ink); }
+.hist-now span { font: 500 11px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .1em; }
+.hist-list li.at .hist-row { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+.draft-save { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.draft-save .bf-field { flex: 1 1 160px; display: flex; flex-direction: column; gap: 4px; }
+.draft-save input, .hist-body select { font: inherit; font-size: 16px; min-height: 44px; padding: 6px 10px; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); }
+.draft-save .primary { min-height: 44px; font: 500 14px "IBM Plex Mono", monospace; padding: 0 16px; border-radius: 8px; border: 1.5px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.hist-list.drafts { margin-top: 14px; }
+.draft { display: grid; grid-template-columns: 44px 1fr; gap: 4px 6px; align-items: start; padding: 10px 0; }
+.draft-pick { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; cursor: pointer; }
+.draft-pick input { width: 22px; height: 22px; accent-color: var(--accent); }
+.draft-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 8px; }
+.draft-main b { font-weight: 600; }
+.draft-line { font-size: 14px; color: var(--ink-2); font-style: italic; }
+.draft-actions { grid-column: 2; display: flex; gap: 8px; }
+.draft-actions .tool { min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 14px; }
+.hist-body .bf-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+
+.ver-step { display: grid; grid-template-columns: 44px 1fr 44px; gap: 8px; align-items: center; margin: 4px 0 12px; }
+.ver-cur { text-align: center; display: flex; flex-direction: column; }
+.ver-preview { margin-bottom: 12px; }
+.ver-preview .bit { font-size: 19px; }
+
+/* Compare on phones: swipe between versions instead of a grid. */
+.cmp-count { display: none; margin-left: auto; }
+.cmp-help-drafts { display: none; }
+body.cmp-drafts .cmp-help, body.cmp-drafts .cmp-add, body.cmp-drafts #compare-empty { display: none; }
+body.cmp-drafts .cmp-help-drafts { display: block; }
+@media (max-width: 639px) {
+  .compare-cards {
+    display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    margin: 18px -16px 0; padding: 4px 16px 14px; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch;
+  }
+  .compare-cards > .version { flex: 0 0 86%; scroll-snap-align: start; }
+  .cmp-count { display: inline; }
+}
+@media (max-width: 639px) { .hist { width: 100%; border-left: 0; box-shadow: none; } .hist-scrim { display: none; } }

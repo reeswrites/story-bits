@@ -1,12 +1,12 @@
-// Loads the page's DOM-free scripts (data.js, grammar.js, engine.js) into a fresh vm context, the
-// way index.html does: plain scripts sharing one global scope. Returns run(code), which evaluates
+// Loads the page's DOM-free scripts (data.js, grammar.js, engine.js, timeline.js) into a fresh vm
+// context, the way index.html does: plain scripts sharing one global scope. Returns run(code), which evaluates
 // code in that scope (so tests can reach `state`, `G`, `rng` and friends directly).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-export const FILES = ["data.js", "grammar.js", "engine.js"];
+export const FILES = ["data.js", "grammar.js", "engine.js", "timeline.js"];
 
 export function loadEngine(files = FILES.map((f) => root + f)) {
   const ctx = vm.createContext({ console, TextEncoder, TextDecoder, btoa, atob, structuredClone });

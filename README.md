@@ -21,12 +21,27 @@ Everything else:
 - **Rules** (above the piece) holds the grammar, form, length, the dial, the pairs it clashes, and *Reroll one card*.
 - **With others** has *Start a jam*, *Pass it around* and *Today's bit*.
 - **More** (next to Shuffle) has *Retell*, *Keep this character* and *Copy link*.
-- **↶ ↷** undo and redo appear once there's something to undo (also **⌘Z** / **Ctrl+Z**, **⇧⌘Z** / **Ctrl+Shift+Z**). Undo covers words, lines, form, length, the dial and the grammar. In a together jam an undo goes out like any other edit and only puts back what you changed; in a challenge it counts like putting a change back.
+- **↶ ↷** undo and redo appear once there's something to undo (also **⌘Z** / **Ctrl+Z**, **⇧⌘Z** / **Ctrl+Shift+Z**), and **History** opens the whole timeline. See *Everything is reversible*, below.
+- **On a phone**, Undo · Shuffle · Redo · History sit in a bar at the bottom of the screen, in reach of your thumb (big targets, clear of the home indicator); it steps aside while a word's picker is open.
 - **Word bank**, **Grammars & spaces** and the grammar's **kept shelf** (*The cast*, *Images*…) fold away below the piece.
 
 Which of these are open is remembered in this browser. In a jam or a challenge, its bar stays on the page.
 
 **Keyboard and screen readers**: words are buttons named for what they are (*landlord, Who: person*); each sentence has a tune button that shows when focused. The picker is a dialog: focus moves into it, ← → step, Escape closes it and returns focus to the word; on a phone it's a modal sheet and Tab stays inside it. Small text holds 6:1 contrast or better; nothing is faded unless it's done (a resolved comment), and unavailable buttons are outlined dashed rather than greyed.
+
+## Everything is reversible
+
+One undo timeline holds everything you do, not only the piece: tuning words and lines, form, length and the dial, switching grammar, edits to your grammars (words, lines, pairs, constraints, the dial, JSON, forking, deleting), the word bank (add and remove), keeping and forgetting things on the kept shelf, and saving or deleting drafts. Each step has a plain label (*added “ugly” to Who · descriptor*), and undoing one says what it put back (*Undid: …*).
+
+**History** (next to Shuffle; on a phone, in the bottom bar) opens a sheet, full height on a phone and a panel at the side on a wider screen, with three views:
+
+- **Timeline**: newest first. Tap any step to go back to just before it; what you undo stays above the *now* line, ready to redo, until you change something new.
+- **Drafts**: *Save a draft* keeps the piece exactly as it is, named, in this browser (up to 30; also under **More**). Open one, delete one (undo brings it back), or tick a few and **Compare** them with the piece as it is now: side by side on a wide screen, swipe cards on a phone, with what each draft changed highlighted.
+- **Versions**: every saved edit to one of your grammars is a version (up to 50 each). Step back and forward through them with your piece told under each, and **Restore** one: it's saved again as the newest version, so nothing is ever deleted. Your library's cards have a **History** button too.
+
+Pieces made with your own grammar pin the version they were made with, so they keep opening here whichever version is current; their links still carry the grammar itself, so they open anywhere.
+
+In a together jam, undoing a change to the piece goes out like any other edit and only puts back what you changed (others' edits stay). A grammar edit that changes the jam's piece isn't on your timeline (it would undo everyone's piece), but it's still a version you can restore. Starting or leaving a jam or a challenge clears the piece's steps (they were about another piece); the rest of the timeline stays. The timeline lasts until you reload; drafts and versions are kept.
 
 ## Writing alone
 
@@ -97,7 +112,7 @@ Your spaces and their keys are listed in this browser only. Every client checks 
 
 ## What's stored
 
-- **In your browser** (localStorage): your grammars, word bank, kept shelf (`story-bits-kept`; the older `story-bits-cast` is copied over once and left as it was), nickname, the list of spaces you've joined with their invite keys, which sections are open, whether you've seen the first-run hint, whether part labels show (and how many words you've tuned, up to a few), and the piece you had before your last reload. Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
+- **In your browser** (localStorage): your grammars and their versions (stored as what changed from one to the next), drafts, word bank, kept shelf (`story-bits-kept`; the older `story-bits-cast` is copied over once and left as it was), nickname, the list of spaces you've joined with their invite keys, which sections are open, whether you've seen the first-run hint, whether part labels show (and how many words you've tuned, up to a few), and the piece you had before your last reload. Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
 - **In a jam** (its own storage on Cloudflare): the shared piece, comments (with nicknames), finished workshop rounds (the start, each copy, notes, claps; up to 50), and, if it's in a space, that space's id and name and a copy of its grammars, lore and cast. How long it's kept is the host's call: a month or a year after it's last used, or until the host deletes it (a year by default). The host can wipe its history and comments, or delete the whole jam, any time.
 - **In a space** (its own storage on Cloudflare): its name and keys, grammars (every version), word packs, kept pieces, cast, lore, comments (with nicknames), and a summary of each linked jam's rounds (names and winners). Up to 6 MB. How long it's kept is the owner's call: **until they delete it** (the default), or a year or a month after it's last used; choosing a time asks first, and the space shows the date it would go, highlighted near the end. The owner can delete it any time, and export it first.
 
@@ -115,13 +130,13 @@ Publishing is a public space now. The GitHub route below is only for curating wh
 
 ## Run it
 
-No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), then the page: `library.js`, `jam.js`, `spaces.js`, `app.js`.
+No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), then the page: `library.js`, `history.js` (the timeline's stores and the History sheet), `jam.js`, `spaces.js`, `app.js`.
 
 ```bash
 python3 -m http.server 4290
 ```
 
-Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js` and `engine.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases and escaping. Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
+Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js`, `engine.js` and `timeline.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases, escaping, and history (the timeline, grammar versions and their storage, pinned versions, drafts, step labels). Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
 
 ```bash
 node --test test/*.test.mjs
