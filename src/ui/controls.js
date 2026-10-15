@@ -16,19 +16,75 @@ function initFolds() {
     if (d.dataset.fold in saved) d.open = !!saved[d.dataset.fold];
     d.addEventListener("toggle", () => saveFold(d.dataset.fold, d.open));
   });
-  // The Rules drawer is a button and a panel, so its button sits in the toolbar row.
-  document.querySelectorAll("[data-fold-btn]").forEach((b) => setDrawer(b, !!saved[b.dataset.foldBtn], false));
+  // The Rules drawer is a button and a panel, so its button sits in the toolbar row. On a phone
+  // it's a sheet, and starts closed.
+  document.querySelectorAll("[data-fold-btn]").forEach((b) => setDrawer(b, !isSheet() && !!saved[b.dataset.foldBtn], false));
 }
 function saveFold(name, open) {
   const now = loadFolds();
   now[name] = open;
   try { localStorage.setItem(FOLD_KEY, JSON.stringify(now)); } catch {}
 }
+// On a phone the drawer is a bottom sheet, like the picker: the piece stays in view above it, so
+// changing the form, length or dial shows its result as you go.
 function setDrawer(btn, open, save = true) {
+  const d = document.getElementById(btn.getAttribute("aria-controls"));
   btn.setAttribute("aria-expanded", String(open));
-  document.getElementById(btn.getAttribute("aria-controls")).hidden = !open;
+  d.hidden = !open;
   if (save) saveFold(btn.dataset.foldBtn, open);
+  const sheet = open && isSheet();
+  d.classList.toggle("sheet", sheet);
+  document.body.classList.toggle("drawer-open", sheet);
+  if (sheet) requestAnimationFrame(() => {
+    const top = $(".page").getBoundingClientRect().top - 8;
+    if (Math.abs(top) > 2) scrollBy({ top, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
 }
+function closeDrawerSheet() {
+  const d = document.querySelector(".drawer.sheet:not([hidden])");
+  if (!d) return false;
+  const btn = document.querySelector(`[aria-controls="${d.id}"]`);
+  setDrawer(btn, false);
+  btn.focus({ preventScroll: true, focusVisible: keyNav });
+  return true;
+}
+document.addEventListener("click", (e) => {
+  if (e.target instanceof Element && e.target.closest("[data-drawer-close]")) closeDrawerSheet();
+});
+// Escape closes the sheet, unless a word's picker is open over it (that closes first).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !state.sel && !document.querySelector("details.menu[open]") && closeDrawerSheet()) e.preventDefault();
+});
+// Turning a phone on its side (or resizing a window) moves the drawer between sheet and inline.
+addEventListener("resize", () => {
+  const b = document.querySelector("[data-fold-btn][aria-expanded='true']");
+  if (b && b.closest("body") && document.getElementById(b.getAttribute("aria-controls")).classList.contains("sheet") !== isSheet()) setDrawer(b, true, false);
+});
+
+// ---------- focus rings and the soft keyboard ----------
+// The heavy focus ring is for keyboard use. Closing a sheet with a tap puts focus back on the
+// word without one; with the keyboard, the ring shows.
+let keyNav = false;
+document.addEventListener("keydown", () => { keyNav = true; document.documentElement.dataset.input = "key"; }, true);
+document.addEventListener("pointerdown", () => { keyNav = false; document.documentElement.dataset.input = "pointer"; }, true);
+// A phone's keyboard covers the bottom of the screen without moving fixed things (iOS), so the
+// sheets lift by its height: --kb is how much of the layout viewport the keyboard hides.
+function syncKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty("--kb", `${kb}px`);
+  document.documentElement.style.setProperty("--vvh", `${Math.round(vv.height)}px`);
+  document.body.classList.toggle("kb-open", kb > 60);
+}
+window.visualViewport?.addEventListener("resize", syncKeyboard);
+window.visualViewport?.addEventListener("scroll", syncKeyboard);
+// A field in a sheet scrolls into view once the keyboard is up.
+document.addEventListener("focusin", (e) => {
+  const f = e.target instanceof Element && e.target.closest("input, textarea");
+  if (!f || !f.closest(".picker.sheet, .drawer.sheet")) return;
+  setTimeout(() => { syncKeyboard(); f.scrollIntoView({ block: "nearest" }); }, 350);
+});
 // Open every fold around an element, so something that wants your attention can be seen.
 function reveal(el) {
   for (let d = el?.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
@@ -75,17 +131,22 @@ function placeFirstHint() {
 
 // ---------- reload starts fresh ----------
 // Reloading a plain piece starts a new one (links opened any other way open exactly). The piece
-// you had is kept in this browser, and a button offers it back for a few seconds.
+// you had is kept in this browser, and a slim bar above the bottom bar offers it back until you
+// take it or put the bar away (phones reload tabs often, so it doesn't time out).
 const LAST_KEY = "story-bits-last-piece";
-let backTimer;
 function offerBack() {
-  const el = $("#back-offer");
-  el.hidden = false;
-  clearTimeout(backTimer);
-  backTimer = setTimeout(() => { if (!el.contains(document.activeElement)) el.hidden = true; else backTimer = setTimeout(() => (el.hidden = true), 5000); }, 10000);
+  $("#back-offer").hidden = false;
+  document.body.classList.add("back-open");
 }
-function backToLast() {
+function hideBack() {
   $("#back-offer").hidden = true;
+  document.body.classList.remove("back-open");
+}
+document.addEventListener("click", (e) => {
+  if (e.target instanceof Element && e.target.closest(".bo-x")) { hideBack(); $("#shuffle").focus({ preventScroll: true, focusVisible: keyNav }); }
+});
+function backToLast() {
+  hideBack();
   const h = stored(LAST_KEY);
   hintNext("back to your last piece");
   if (!h || !fromHash(h)) { toast("That piece couldn't be opened."); return; }

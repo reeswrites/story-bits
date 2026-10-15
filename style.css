@@ -986,3 +986,92 @@ summary.kept-flash { animation: kept-flash 2.4s ease-out; }
 .sp-new button.primary { min-height: 44px; }
 .sp-new button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font: 500 14px "IBM Plex Mono", monospace; padding: 8px 14px; border-radius: 6px; border: 1.5px solid var(--accent); cursor: pointer; }
 .toast { width: max-content; text-align: center; }
+/* ==== Phone QA fixes: layout and picker (docs/qa-phone.md #1 #3 #5 #11 #13 #14 #15) ==== */
+/* #13: punctuation stays on the line of the word before it (gluePunct in render.js). */
+.nb { white-space: nowrap; }
+.nb > .word, .nb > .ghost-slot { white-space: normal; }
+
+/* #1: on a phone, Rules is a bottom sheet; the piece stays in view above it. */
+.drawer-head { display: none; }
+.drawer.sheet {
+  position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 49;
+  max-height: 50vh; max-height: 50dvh; overflow: auto; overscroll-behavior: contain;
+  background: var(--card); color: var(--ink); border-top: 1.5px solid var(--ink); border-radius: 16px 16px 0 0;
+  box-shadow: 0 -18px 40px -16px rgba(0, 0, 0, .45);
+  padding: 0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+}
+.drawer.sheet .drawer-head {
+  display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 1;
+  background: var(--card); padding: 6px 0 2px; margin-bottom: 2px;
+}
+.drawer.sheet .controls { margin: 0; padding: 0; border: 0; background: none; }
+body.drawer-open { padding-bottom: 50vh; }
+body.drawer-open .thumb-bar, body.drawer-open .back-offer { display: none !important; }
+
+/* #3: a challenge is one line and its actions; how it works folds away. */
+.game-bar { padding: 10px 12px; }
+.gb-top { align-items: center; gap: 4px 12px; }
+.gb-title .eyebrow { margin: 0; }
+.game-bar > .gb-row { margin-top: 8px; align-items: center; gap: 8px; }
+.gb-row button { min-height: 44px; }
+.gb-how > summary {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 6px; border-radius: 6px;
+  font: 500 14px "IBM Plex Mono", monospace; color: var(--ink);
+  text-decoration: underline dotted 1.5px; text-underline-offset: 4px;
+}
+.gb-how > summary::before { content: "▸"; display: inline-block; transition: transform .15s; }
+.gb-how[open] { flex-basis: 100%; }
+.gb-how[open] > summary::before { transform: rotate(90deg); }
+.gb-how > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.gb-how .gb-note { display: block; margin: 4px 0 0; font-size: 15px; color: var(--ink); }
+.gb-how .gb-row { margin-top: 8px; align-items: end; }
+.gb-name input { min-height: 44px; }
+
+/* #5: Back to your last piece: a slim bar that stays until you use it or put it away. */
+.back-offer { padding: 4px 4px 4px 14px; gap: 8px; }
+.back-offer .bo-say { flex: 1 1 auto; min-width: 0; }
+.back-offer button { white-space: nowrap; min-height: 40px; }
+.back-offer .bo-x {
+  flex: none; width: 44px; height: 44px; padding: 0; background: none; color: var(--paper); font-size: 16px; border-radius: 50%;
+}
+.back-offer .bo-x:hover { background: color-mix(in srgb, var(--paper) 15%, transparent); }
+.back-offer button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+body.sheet-open .back-offer { display: none; }
+@media (max-width: 639px) {
+  /* Docked on top of the bottom bar, full width, off the text. */
+  .back-offer {
+    left: 0; right: 0; transform: none; max-width: none; border-radius: 0;
+    bottom: calc(69px + env(safe-area-inset-bottom)); font-size: 13px;
+    padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(4px, env(safe-area-inset-right));
+    box-shadow: none;
+  }
+  .back-offer #back-last { font-size: 13px; padding: 6px 10px; }
+  body.back-open main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+  body.back-open .toast:not(.top) { bottom: calc(136px + env(safe-area-inset-bottom)); }
+}
+
+/* #14: the moves row has gutters at both ends, snaps inside them, and fades where there's more. */
+.pk-moves { scroll-padding-inline: 14px; }
+.picker.sheet .pk-moves { scroll-padding-inline: calc(14px + env(safe-area-inset-left)); }
+.pk-moves::after { content: ""; flex: 0 0 8px; }
+.pk-moves.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.pk-moves.more-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 40px); mask-image: linear-gradient(to right, transparent, #000 40px); }
+.pk-moves.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.pk-keys { font-size: 12px; }
+
+/* #15: the focus ring shows for keyboard use, not after a tap. */
+html[data-input="pointer"] .word:focus-visible, html[data-input="pointer"] .picker:focus-visible { outline: none; }
+html[data-input="pointer"] .beat-btn:focus-visible {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); padding: 0; margin: 0;
+}
+
+/* #11: tap targets at least 44px. */
+.toolbar .tool { min-height: 44px; }
+.pk-x { width: 44px; height: 44px; }
+.picker .pk-actions button, .picker .pk-own button, .picker .pk-own input { min-height: 44px; }
+.picker.sheet .pk-opt { min-height: 44px; }
+
+/* The soft keyboard: the sheets sit on top of it (--kb, from visualViewport in controls.js) and
+   shrink to the room left, so the field you're typing in stays in view. */
+.picker.sheet { bottom: var(--kb, 0px); }
+body.kb-open .picker.sheet, body.kb-open .drawer.sheet { max-height: calc(var(--vvh, 100vh) - 64px); }

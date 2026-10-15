@@ -45,26 +45,36 @@ function selChanged() {
   return changes(state.game.c.s, fixedSnapshot()).some((c) => c === key || key.startsWith(c + "."));
 }
 
+// One line (who it's from, the moves) and the actions; how it works folds away, so the piece is
+// on the first screen of a phone.
 function renderGameBar() {
   const bar = $("#game-bar");
   if (!state.game) { bar.hidden = true; return; }
   const { c, name } = state.game;
   const used = movesUsed();
+  const howOpen = !!bar.querySelector(".gb-how[open]");
   bar.hidden = false;
+  const how = c.n ? `Make it yours in <b>${c.n}</b> move${c.n === 1 ? "" : "s"}. Any word or beat you change is a move; put it back to get the move back.` : `Make it yours. No move limit: everything you change shows up highlighted at the reveal.`;
   bar.innerHTML = `
     <div class="gb-top">
-      <p class="gb-title"><span class="eyebrow">${c.d ? `Today's bit · ${esc(c.h)}` : `Challenge${c.h ? ` from ${esc(c.h)}` : ""}`}</span>
-        ${c.n ? `Make it yours in <b>${c.n}</b> move${c.n === 1 ? "" : "s"}. Any word or beat you change is a move; put it back to get the move back.` : `Make it yours. No move limit: everything you change shows up highlighted at the reveal.`}</p>
+      <p class="gb-title"><span class="eyebrow">${c.d ? `Today's bit · ${esc(c.h)}` : `Challenge${c.h ? ` from ${esc(c.h)}` : ""}`}</span></p>
       ${c.n ? `<div class="gb-moves" aria-label="${used} of ${c.n} moves used">${Array.from({ length: c.n }, (_, i) => `<span class="${i < used ? "on" : ""}"></span>`).join("")}<b>${used}/${c.n}</b></div>` : `<div class="gb-moves"><b>${used} change${used === 1 ? "" : "s"}</b></div>`}
     </div>
     ${state.room ? `<div class="gb-row">
       <button id="gb-send" class="primary" ${jamCan("edit") ? "" : "hidden"}>${roomMe()?.submitted ? "Update my version" : "Send my version"}</button>
-      <span class="gb-note">${roomMe()?.submitted ? "Sent. You can keep tuning and send again until the host reveals." : "Everyone's copies stay hidden until the host reveals them."}</span>
+      <details class="gb-how"${howOpen ? " open" : ""}><summary>How it works</summary>
+        <p class="gb-note">${how} ${roomMe()?.submitted ? "Sent. You can keep tuning and send again until the host reveals." : "Everyone's copies stay hidden until the host reveals them."}</p>
+      </details>
     </div>` : `<div class="gb-row">
-      <label class="gb-name"><span class="dial-label">Your name</span><input id="gb-name" maxlength="${NAME_MAX}" value="${esc(name)}" placeholder="so they know it's you"></label>
       <button id="gb-submit" class="primary">Copy my version</button>
-      <button id="gb-compare" class="ghost">Compare versions</button>
-      <button id="gb-leave" class="ghost subtle">Leave challenge</button>
+      <button id="gb-compare" class="ghost">Compare</button>
+      <details class="gb-how"${howOpen ? " open" : ""}><summary>How it works</summary>
+        <p class="gb-note">${how} Copy your version and paste it back to whoever sent the challenge; Compare puts the versions side by side.</p>
+        <div class="gb-row">
+          <label class="gb-name"><span class="dial-label">Your name</span><input id="gb-name" maxlength="${NAME_MAX}" value="${esc(name)}" placeholder="so they know it's you"></label>
+          <button id="gb-leave" class="ghost subtle">Leave challenge</button>
+        </div>
+      </details>
     </div>`}`;
 }
 
@@ -115,6 +125,7 @@ function renderCompare() {
       <div class="vote">${clapsOn() ? `<button class="clap" data-clap="${i}" aria-label="Clap for ${esc(e.name || `player ${i + 1}`)}" ${clapDisabled(e) ? "disabled" : ""}>👏 <b>${e.votes}</b></button>${top > 0 && e.votes === top ? `<span class="crown">${state.room?.data?.phase === "results" ? "winner" : "leading"}</span>` : ""}` : ""}${state.room && e.id === jamMe() ? `<span class="crown mine">yours</span>` : ""}</div>
     </article>`;
   }).join("");
+  gluePunct(el);
   $("#compare-empty").hidden = cmp.entries.length > 0;
   $("#cmp-count").textContent = `${cmp.entries.length + 1} versions · swipe`;
 }
@@ -129,6 +140,7 @@ function renderDraftCompare(el, cmp) {
       <div class="vote"><button class="clap" data-draft-open="${esc(e.id)}">Open this draft</button></div>
     </article>`;
   }).join("");
+  gluePunct(el);
   $("#compare-empty").hidden = true;
   $("#cmp-count").textContent = `${cmp.entries.length + 1} versions · swipe`;
 }

@@ -318,9 +318,18 @@ function renderPicker() {
   } else if (pickerFor) {
     const was = pickerFor.sel;
     pickerFor = null;
-    if (focusIn || lost) openerOf(was)?.focus({ preventScroll: true });
+    if (focusIn || lost) openerOf(was)?.focus({ preventScroll: true, focusVisible: keyNav });
   }
+  movesHint();
 }
+// The moves row scrolls sideways: a fade at the edge that has more says so, without the last
+// pill looking cut off.
+function movesHint(row = $("#picker .pk-moves")) {
+  if (!row) return;
+  row.classList.toggle("more-r", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+  row.classList.toggle("more-l", row.scrollLeft > 2);
+}
+document.addEventListener("scroll", (e) => { if (e.target instanceof Element && e.target.matches(".pk-moves")) movesHint(e.target); }, true);
 function drawPicker(el) {
   const sel = state.sel;
   if (sel && sel.beat) {

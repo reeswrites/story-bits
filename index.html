@@ -30,6 +30,7 @@
       </details>
     </div>
     <div id="rules" class="drawer" hidden>
+    <div class="drawer-head"><span class="pk-crumb">Rules</span><button class="pk-x" data-drawer-close aria-label="Close rules">✕</button></div>
     <section class="controls" aria-label="Rules">
       <div class="grammar-row">
         <label class="grammar-label"><span class="dial-label">Grammar</span>
@@ -192,7 +193,7 @@
   <div id="history" class="hist" role="dialog" aria-modal="true" aria-labelledby="hist-h" tabindex="-1" hidden></div>
   <div id="picker" class="picker" role="dialog" aria-labelledby="pk-title" tabindex="-1" hidden></div>
   <div id="first-hint" class="first-hint" role="note" hidden><span>tap to change</span><button class="fh-x" aria-label="Dismiss hint">✕</button></div>
-  <div id="back-offer" class="back-offer" role="status" hidden><span>New piece.</span> <button id="back-last">Back to your last piece</button></div>
+  <div id="back-offer" class="back-offer" role="status" hidden><span class="bo-say">New piece.</span> <button id="back-last">Back to your last piece</button><button class="bo-x" aria-label="Keep the new piece">✕</button></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="grammars/index.js"></script>

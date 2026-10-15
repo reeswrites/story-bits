@@ -110,7 +110,31 @@ function render() {
 // The headline and the story. A preview (ghostCand) draws them with a change ghosted in.
 function drawPiece(ctx = context()) {
   $("#bit").innerHTML = bitHtml(ctx);
+  gluePunct($("#bit"));
   labelParts($("#bit"));
   $("#story").innerHTML = story(ctx).map((p) => `<p>${p}</p>`).join("");
+  gluePunct($("#story"));
   if (state.room) { paintPeers(); paintNotes(); }
+}
+
+// Punctuation stays with the word before it. A word is a button, and a line may break after a
+// button even before "," or ".", so a closing "." could sit alone on the next line. The
+// punctuation moves in beside the word, the two wrapped in a span that doesn't break.
+const PUNCT = /^[.,;:!?…)\]”’]+/;
+function gluePunct(root) {
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (PUNCT.test(n.data) && n.previousSibling?.nodeType === 1) texts.push(n);
+  for (const t of texts) {
+    // The last thing drawn before the punctuation, however deep the phrases nest.
+    let last = t.previousSibling;
+    while (last.nodeType === 1 && !last.matches("button, .ghost-slot") && last.lastChild) last = last.lastChild;
+    if (last.nodeType !== 1 || !last.matches("button, .ghost-slot")) continue;
+    const mark = t.data.match(PUNCT)[0];
+    const nb = document.createElement("span");
+    nb.className = "nb";
+    last.replaceWith(nb);
+    nb.append(last, mark);
+    t.data = t.data.slice(mark.length);
+  }
 }
