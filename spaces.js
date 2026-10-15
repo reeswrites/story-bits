@@ -9,36 +9,15 @@
 // Grammars in a space are immutable versions. A piece made with one pins it (v4 links: gs = the
 // space, gv = the version). Everything a space sends is checked here with the same checks links
 // use (checkGrammar, checkEntry, parseSnapshot) before the page touches it.
+// The grammar-version registry (SPACE_ID, srcOf, refOf, addVersion, knownVersion) is in engine.js.
 
-const SPACE_ID = /^[A-Z0-9]{8}$/;
 const newSpaceId = () => Array.from({ length: 8 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join("");
 const SPACE_PROTO = /^(localhost|127\.0\.0\.1)/.test(ROOMS_HOST) ? "http" : "https";
 const spaceUrl = (id) => `${SPACE_PROTO}://${ROOMS_HOST}/parties/story-space/${id}`;
 const SPACE_ROLE_RANK = { view: 0, comment: 1, edit: 2, owner: 3 };
 const SPACE_RETAIN_NAMES = { keep: "until I delete it", "1y": "for a year after it's last used", "30d": "for a month after it's last used" };
 
-// ---------- grammar versions ----------
-// Every grammar version the page has fetched or been sent, keyed "SPACE/gid@n", checked once. The
-// objects themselves are what the engine runs, so srcOf can say where the grammar in use came from.
-const spaceVersions = {};
-const srcOf = new WeakMap(); // grammar object -> { sp, ver, pub }
-const verKey = (sp, gid, ver) => `${sp}/${gid}@${ver}`;
-// A v4 reference ({ gs, gv }) if it's well-formed, else null.
-const refOf = (x) => (x && typeof x.gs === "string" && SPACE_ID.test(x.gs) && Number.isInteger(x.gv) && x.gv > 0 && x.gv <= 1000 ? { gs: x.gs, gv: x.gv } : null);
-function addVersion(sp, ver, doc, pub) {
-  // A space grammar may not take a built-in's id: a link naming it would open the wrong words.
-  if (!doc || GRAMMARS[doc.id] || checkGrammar(doc)) return null;
-  const k = verKey(sp, doc.id, ver);
-  if (spaceVersions[k]) {
-    const s = srcOf.get(spaceVersions[k]);
-    if (pub && s) s.pub = true;
-    return spaceVersions[k];
-  }
-  spaceVersions[k] = doc;
-  srcOf.set(doc, { sp, ver, pub: !!pub });
-  return doc;
-}
-const knownVersion = (ref, gid) => spaceVersions[verKey(ref.gs, gid, ref.gv)] || null;
+// ---------- fetching grammar versions ----------
 async function fetchVersion(sp, gid, ver) {
   if (knownVersion({ gs: sp, gv: ver }, gid)) return knownVersion({ gs: sp, gv: ver }, gid);
   const mine = spaces.list.find((s) => s.id === sp);
