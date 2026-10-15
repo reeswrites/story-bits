@@ -1,153 +1,244 @@
-// Pools for the five bits. Each entry carries a tier (0 = plausible, 1 = odd, 2 = absurd)
-// and, where it matters, a valence (+1 good, 0 mixed, -1 bad). The incongruity dial
-// works by mismatching these: a happy event paired with a happy feeling is a story;
-// a happy event paired with dread is a bit.
+// Every card is a phrase built from words, and every word is tunable on its own.
+// Each word carries a tier (0 = plausible, 1 = odd, 2 = absurd); a phrase's register is
+// its strangest word. Event and feeling cores also carry a valence (+1 good, 0 mixed,
+// -1 bad). The incongruity dial works by making pairs of cards fit or clash on these.
+//
+// Phrases nest: a word whose text contains {thing} holds a whole thing phrase of its own,
+// which is itself tunable word by word, and may nest again (up to MAX_DEPTH).
+// Pronoun tokens in word text: {p} {o} {pos} {is} {has} {was} {s}.
 
-// who: name as it reads mid-sentence, plus pronouns.
+const MAX_DEPTH = 2;
+
 const HE = { p: "he", o: "him", pos: "his", is: "is", has: "has", was: "was", s: "s" };
 const SHE = { p: "she", o: "her", pos: "her", is: "is", has: "has", was: "was", s: "s" };
 const THEY = { p: "they", o: "them", pos: "their", is: "are", has: "have", was: "were", s: "" };
 
-const WHO = [
-  { n: "your uncle", ...HE },
-  { n: "your neighbor", ...SHE },
-  { n: "your roommate", ...THEY },
-  { n: "your grandmother", ...SHE },
-  { n: "your dentist", ...HE },
-  { n: "your old boss", ...SHE },
-  { n: "your cousin Dale", ...HE },
-  { n: "the guy from the coffee shop", ...HE },
-  { n: "your landlord", ...THEY },
-  { n: "your sister's ex", ...THEY },
-  { n: "your mail carrier", ...SHE },
-  { n: "your high school chemistry teacher", ...HE },
-  { n: "your best friend's mom", ...SHE },
-  { n: "the kid down the street", ...THEY },
-  { n: "your aunt Lorraine", ...SHE },
-  { n: "your barber", ...HE },
-  { n: "your coworker in accounting", ...THEY },
-  { n: "your yoga instructor", ...SHE },
-  { n: "your dad", ...HE },
-  { n: "your college roommate", ...THEY },
-];
+// Parts are listed in reading order. opt: may be absent. needs: only present with that part.
+// grow: the order "+" adds optional parts (and "−" drops them in reverse).
+const SCHEMAS = {
+  who: {
+    parts: [
+      { k: "d", name: "descriptor", opt: true, pool: [
+        { t: "recently retired", tier: 0 }, { t: "newly single", tier: 0 }, { t: "very tall", tier: 0 },
+        { t: "soft-spoken", tier: 0 }, { t: "perpetually tired", tier: 0 }, { t: "extremely punctual", tier: 0 },
+        { t: "semi-retired", tier: 0 },
+        { t: "suspiciously tan", tier: 1 }, { t: "formerly famous", tier: 1 }, { t: "aggressively cheerful", tier: 1 },
+        { t: "conspiracy-minded", tier: 1 }, { t: "very online", tier: 1 },
+        { t: "allegedly immortal", tier: 2 }, { t: "twice-knighted", tier: 2 }, { t: "recently resurrected", tier: 2 },
+      ] },
+      { k: "n", name: "person", pool: [
+        { det: "your", t: "uncle", ...HE },
+        { det: "your", t: "neighbor", ...SHE },
+        { det: "your", t: "roommate", ...THEY },
+        { det: "your", t: "grandmother", ...SHE },
+        { det: "your", t: "dentist", ...HE },
+        { det: "your", t: "old boss", ...SHE },
+        { det: "your", t: "cousin Dale", ...HE },
+        { det: "the", t: "guy from the coffee shop", ...HE },
+        { det: "your", t: "landlord", ...THEY },
+        { det: "your", t: "sister's ex", ...THEY },
+        { det: "your", t: "mail carrier", ...SHE },
+        { det: "your", t: "high school chemistry teacher", ...HE },
+        { det: "your", t: "best friend's mom", ...SHE },
+        { det: "the", t: "kid down the street", ...THEY },
+        { det: "your", t: "aunt Lorraine", ...SHE },
+        { det: "your", t: "barber", ...HE },
+        { det: "your", t: "coworker in accounting", ...THEY },
+        { det: "your", t: "yoga instructor", ...SHE },
+        { det: "your", t: "dad", ...HE },
+        { det: "your", t: "college roommate", ...THEY },
+      ].map((x) => ({ ...x, tier: 0 })) },
+    ],
+    grow: ["d"],
+  },
 
-// what happened: completes "<who> ___". Use {pos}/{o}/{p} for pronouns.
-const WHAT = [
-  { t: "just got {pos} boating license", v: 1, tier: 0 },
-  { t: "lost {pos} dog", v: -1, tier: 0 },
-  { t: "finally finished a 1,000-piece puzzle", v: 1, tier: 0 },
-  { t: "got a parking ticket outside {pos} own house", v: -1, tier: 0 },
-  { t: "won the office chili cook-off", v: 1, tier: 0 },
-  { t: "got called for jury duty", v: 0, tier: 0 },
-  { t: "found out {p} {was} adopted (by a different set of the same parents)", v: 0, tier: 2 },
-  { t: "started learning the accordion", v: 1, tier: 0 },
-  { t: "accidentally replied-all to the entire company", v: -1, tier: 0 },
-  { t: "got a tattoo of a lighthouse", v: 0, tier: 1 },
-  { t: "was mistaken for a minor local celebrity", v: 1, tier: 1 },
-  { t: "had {pos} sourdough starter declared a legal dependent", v: 1, tier: 2 },
-  { t: "got banned from a Costco", v: -1, tier: 1 },
-  { t: "inherited a single, very old goose", v: 0, tier: 1 },
-  { t: "was elected treasurer of a club {p} never joined", v: 0, tier: 2 },
-  { t: "beat {pos} personal record at the community pool", v: 1, tier: 0 },
-  { t: "got stuck in an elevator with a mime", v: -1, tier: 1 },
-  { t: "lost a bet and now has to speak only in questions", v: -1, tier: 1 },
-  { t: "discovered {pos} house is technically in another state", v: 0, tier: 2 },
-  { t: "was asked to be a godparent", v: 1, tier: 0 },
-  { t: "got {pos} wisdom teeth out", v: -1, tier: 0 },
-  { t: "was hired to name a new shade of beige", v: 1, tier: 2 },
-  { t: "received a strongly worded letter from a lighthouse", v: -1, tier: 2 },
-  { t: "got a perfect score on a radio trivia call-in", v: 1, tier: 1 },
-  { t: "found a second, smaller fridge inside {pos} fridge", v: 0, tier: 2 },
-  { t: "had to give a toast at a stranger's wedding", v: 0, tier: 1 },
-  { t: "got demoted to assistant regional manager of nothing", v: -1, tier: 2 },
-  { t: "grew a tomato shaped exactly like Ohio", v: 1, tier: 1 },
-  { t: "missed {pos} flight by eleven seconds", v: -1, tier: 0 },
-  { t: "was chosen by a swan", v: 0, tier: 2 },
-];
+  // "<who> [adverb] core [tail]"
+  what: {
+    parts: [
+      { k: "a", name: "adverb", opt: true, pool: [
+        { t: "just", tier: 0 }, { t: "finally", tier: 0 }, { t: "recently", tier: 0 }, { t: "accidentally", tier: 0 },
+        { t: "somehow", tier: 1 }, { t: "secretly", tier: 1 }, { t: "allegedly", tier: 1 }, { t: "once again", tier: 1 },
+        { t: "ceremonially", tier: 2 }, { t: "posthumously", tier: 2 }, { t: "spiritually", tier: 2 },
+      ] },
+      { k: "n", name: "event", pool: [
+        { t: "got {pos} boating license", v: 1, tier: 0 },
+        { t: "lost {pos} dog", v: -1, tier: 0 },
+        { t: "finished a 1,000-piece puzzle", v: 1, tier: 0 },
+        { t: "got a parking ticket outside {pos} own house", v: -1, tier: 0 },
+        { t: "won the office chili cook-off", v: 1, tier: 0 },
+        { t: "got called for jury duty", v: 0, tier: 0 },
+        { t: "started learning the accordion", v: 1, tier: 0 },
+        { t: "replied-all to the entire company", v: -1, tier: 0 },
+        { t: "beat {pos} personal record at the community pool", v: 1, tier: 0 },
+        { t: "got asked to be a godparent", v: 1, tier: 0 },
+        { t: "got {pos} wisdom teeth out", v: -1, tier: 0 },
+        { t: "missed {pos} flight by eleven seconds", v: -1, tier: 0 },
+        { t: "got a tattoo of a lighthouse", v: 0, tier: 1 },
+        { t: "got mistaken for a minor local celebrity", v: 1, tier: 1 },
+        { t: "got banned from a Costco", v: -1, tier: 1 },
+        { t: "inherited a single, very old goose", v: 0, tier: 1 },
+        { t: "got stuck in an elevator with a mime", v: -1, tier: 1 },
+        { t: "lost a bet", v: -1, tier: 0 },
+        { t: "won a perfect score on a radio trivia call-in", v: 1, tier: 1 },
+        { t: "gave a toast at a stranger's wedding", v: 0, tier: 1 },
+        { t: "grew a tomato shaped exactly like Ohio", v: 1, tier: 1 },
+        { t: "found out {p} {was} adopted (by a different set of the same parents)", v: 0, tier: 2 },
+        { t: "had {pos} sourdough starter declared a legal dependent", v: 1, tier: 2 },
+        { t: "got elected treasurer of a club {p} never joined", v: 0, tier: 2 },
+        { t: "discovered {pos} house is technically in another state", v: 0, tier: 2 },
+        { t: "got hired to name a new shade of beige", v: 1, tier: 2 },
+        { t: "received a strongly worded letter from a lighthouse", v: -1, tier: 2 },
+        { t: "found a second, smaller fridge inside {pos} fridge", v: 0, tier: 2 },
+        { t: "got demoted to assistant regional manager of nothing", v: -1, tier: 2 },
+        { t: "got chosen by a swan", v: 0, tier: 2 },
+      ] },
+      { k: "t", name: "detail", opt: true, pool: [
+        { t: "for the second time this year", tier: 0 }, { t: "in front of everyone", tier: 0 },
+        { t: "on {pos} birthday", tier: 0 }, { t: "at age seventy", tier: 0 },
+        { t: "thanks to {thing}", tier: 0 }, { t: "because of {thing}", tier: 0 },
+        { t: "during a eulogy", tier: 1 }, { t: "on live local television", tier: 1 },
+        { t: "with help from {thing}", tier: 1 },
+        { t: "in a dream, but legally", tier: 2 }, { t: "while being followed by {thing}", tier: 2 },
+      ] },
+    ],
+    grow: ["a", "t"],
+  },
 
-// how they feel: completes "and <p> <is> ___".
-const FEEL = [
-  { t: "really excited about it", v: 1, tier: 0 },
-  { t: "worried sick", v: -1, tier: 0 },
-  { t: "quietly, unbearably proud", v: 1, tier: 0 },
-  { t: "pretending it doesn't bother {o}", v: -1, tier: 0 },
-  { t: "not sure how to feel", v: 0, tier: 0 },
-  { t: "telling everyone it was {pos} plan all along", v: 1, tier: 1 },
-  { t: "treating it like a personal betrayal", v: -1, tier: 1 },
-  { t: "weirdly at peace", v: 0, tier: 1 },
-  { t: "already planning the sequel", v: 1, tier: 1 },
-  { t: "in mourning, with a black armband and everything", v: -1, tier: 2 },
-  { t: "certain it's a sign from the universe", v: 0, tier: 1 },
-  { t: "throwing a party about it", v: 1, tier: 1 },
-  { t: "drafting a memoir", v: 0, tier: 2 },
-  { t: "considering a lawsuit", v: -1, tier: 1 },
-  { t: "calling it the best day of {pos} life", v: 1, tier: 0 },
-  { t: "refusing to discuss it before noon", v: -1, tier: 1 },
-  { t: "humming about it constantly", v: 1, tier: 2 },
-  { t: "keeping a candle lit until further notice", v: -1, tier: 2 },
-  { t: "suspiciously calm", v: 0, tier: 1 },
-  { t: "hoping nobody brings it up at Thanksgiving", v: -1, tier: 0 },
-];
+  // "and <p> <is> [intensity] core [tail]"
+  feel: {
+    parts: [
+      { k: "i", name: "intensity", opt: true, needs: "adj", pool: [
+        { t: "really", tier: 0 }, { t: "quietly", tier: 0 }, { t: "deeply", tier: 0 }, { t: "kind of", tier: 0 },
+        { t: "unreasonably", tier: 1 }, { t: "suspiciously", tier: 1 }, { t: "weirdly", tier: 1 }, { t: "aggressively", tier: 1 },
+        { t: "spiritually", tier: 2 }, { t: "legally", tier: 2 }, { t: "professionally", tier: 2 },
+      ] },
+      { k: "n", name: "feeling", pool: [
+        { t: "excited about it", v: 1, tier: 0, adj: true },
+        { t: "thrilled", v: 1, tier: 0, adj: true },
+        { t: "proud", v: 1, tier: 0, adj: true },
+        { t: "worried sick", v: -1, tier: 0, adj: true },
+        { t: "embarrassed", v: -1, tier: 0, adj: true },
+        { t: "furious", v: -1, tier: 0, adj: true },
+        { t: "devastated", v: -1, tier: 0, adj: true },
+        { t: "confused", v: 0, tier: 0, adj: true },
+        { t: "calm about it", v: 0, tier: 0, adj: true },
+        { t: "at peace", v: 0, tier: 0, adj: true },
+        { t: "not sure how to feel", v: 0, tier: 0 },
+        { t: "calling it the best day of {pos} life", v: 1, tier: 0 },
+        { t: "pretending it doesn't bother {o}", v: -1, tier: 0 },
+        { t: "hoping nobody brings it up at Thanksgiving", v: -1, tier: 0 },
+        { t: "telling everyone it was {pos} plan all along", v: 1, tier: 1 },
+        { t: "already planning the sequel", v: 1, tier: 1 },
+        { t: "throwing a party about it", v: 1, tier: 1 },
+        { t: "treating it like a personal betrayal", v: -1, tier: 1 },
+        { t: "considering a lawsuit", v: -1, tier: 1 },
+        { t: "refusing to discuss it before noon", v: -1, tier: 1 },
+        { t: "certain it's a sign from the universe", v: 0, tier: 1 },
+        { t: "humming about it constantly", v: 1, tier: 2 },
+        { t: "in mourning, with a black armband and everything", v: -1, tier: 2 },
+        { t: "keeping a candle lit until further notice", v: -1, tier: 2 },
+        { t: "drafting a memoir", v: 0, tier: 2 },
+      ] },
+      { k: "t", name: "aftertaste", opt: true, pool: [
+        { t: "but won't admit it", tier: 0 }, { t: "for reasons nobody understands", tier: 0 },
+        { t: "in a way that worries the family", tier: 0 }, { t: "and {has} said so on Facebook", tier: 0 },
+        { t: "and blame{s} {thing}", tier: 0 },
+        { t: "and {has} started a podcast about it", tier: 1 },
+        { t: "and {has} commissioned a portrait of {thing}", tier: 1 },
+        { t: "and {has} been seen whispering to {thing}", tier: 2 },
+      ] },
+    ],
+    grow: ["i", "t"],
+  },
 
-const WHERE = [
-  { t: "the DMV", tier: 0 },
-  { t: "a Cracker Barrel off I-95", tier: 0 },
-  { t: "the community pool", tier: 0 },
-  { t: "a cousin's backyard barbecue", tier: 0 },
-  { t: "the self-checkout at Home Depot", tier: 0 },
-  { t: "a church rummage sale", tier: 0 },
-  { t: "a ferry to nowhere in particular", tier: 1 },
-  { t: "the bowling alley's lost and found", tier: 1 },
-  { t: "a timeshare presentation", tier: 1 },
-  { t: "a mattress store that was also a vape shop", tier: 1 },
-  { t: "the waiting room of a very small airport", tier: 1 },
-  { t: "a corn maze with no exit", tier: 2 },
-  { t: "a lighthouse that is mostly a gift shop", tier: 2 },
-  { t: "the back room of a Medieval Times", tier: 2 },
-  { t: "a library that only lends out ladders", tier: 2 },
-];
+  // "[det] [intensity] [quality] place [clause]"
+  where: {
+    parts: [
+      { k: "i", name: "intensity", opt: true, needs: "q", pool: [
+        { t: "very", tier: 0 }, { t: "mostly", tier: 0 }, { t: "slightly", tier: 0 },
+        { t: "weirdly", tier: 1 }, { t: "suspiciously", tier: 1 },
+        { t: "legally", tier: 2 }, { t: "spiritually", tier: 2 },
+      ] },
+      { k: "q", name: "quality", opt: true, pool: [
+        { t: "crowded", tier: 0 }, { t: "empty", tier: 0 }, { t: "fluorescent-lit", tier: 0 },
+        { t: "freezing", tier: 0 }, { t: "sticky", tier: 0 }, { t: "suburban", tier: 0 },
+        { t: "abandoned", tier: 1 }, { t: "haunted", tier: 1 }, { t: "candlelit", tier: 1 }, { t: "flooded", tier: 1 },
+        { t: "underwater", tier: 2 }, { t: "self-aware", tier: 2 }, { t: "tax-exempt", tier: 2 },
+      ] },
+      { k: "n", name: "place", pool: [
+        { det: "the", t: "DMV", tier: 0 },
+        { det: "a", t: "Cracker Barrel off I-95", tier: 0 },
+        { det: "the", t: "community pool", tier: 0 },
+        { det: "a cousin's", t: "backyard barbecue", tier: 0 },
+        { det: "the", t: "self-checkout at Home Depot", tier: 0 },
+        { det: "a", t: "church rummage sale", tier: 0 },
+        { det: "a", t: "laundromat", tier: 0 },
+        { det: "an", t: "Olive Garden", tier: 0 },
+        { det: "a", t: "wedding reception", tier: 0 },
+        { det: "a", t: "corn maze", tier: 0 },
+        { det: "a", t: "library", tier: 0 },
+        { det: "a", t: "ferry to nowhere in particular", tier: 1 },
+        { det: "the", t: "lost and found at the bowling alley", tier: 1 },
+        { det: "a", t: "timeshare presentation", tier: 1 },
+        { det: "a", t: "mattress store", tier: 0 },
+        { det: "a", t: "lighthouse", tier: 1 },
+        { det: "an", t: "escape room", tier: 1 },
+        { det: "a", t: "Renaissance faire", tier: 1 },
+        { det: "the", t: "back room of a Medieval Times", tier: 2 },
+        { det: "a", t: "submarine", tier: 2 },
+      ] },
+      { k: "c", name: "clause", opt: true, pool: [
+        { t: "during a power outage", tier: 0 }, { t: "two towns over", tier: 0 },
+        { t: "next to {thing}", tier: 0 },
+        { t: "that was also a vape shop", tier: 1 }, { t: "that is mostly a gift shop", tier: 1 },
+        { t: "run by {thing}", tier: 1 }, { t: "guarded by {thing}", tier: 1 },
+        { t: "with no exit", tier: 2 }, { t: "that only lends out ladders", tier: 2 },
+      ] },
+    ],
+    grow: ["q", "i", "c"],
+  },
 
-// The thing is built from words, each tunable on its own:
-//   [intensity] [quality] noun [clause]  ->  "a slightly wet dog that has a lawyer"
-// Intensity only appears with a quality (it modifies the quality, not the noun).
-// The thing's register is its strangest word, so one absurd word is enough to clash.
-const THING_WORDS = {
-  intensity: [
-    { t: "slightly", tier: 0 }, { t: "extremely", tier: 0 }, { t: "mostly", tier: 0 },
-    { t: "surprisingly", tier: 0 }, { t: "very", tier: 0 },
-    { t: "suspiciously", tier: 1 }, { t: "aggressively", tier: 1 }, { t: "technically", tier: 1 },
-    { t: "legally", tier: 2 }, { t: "spiritually", tier: 2 }, { t: "emotionally", tier: 2 },
-  ],
-  quality: [
-    { t: "loud", tier: 0 }, { t: "quiet", tier: 0 }, { t: "wet", tier: 0 }, { t: "damp", tier: 0 },
-    { t: "tiny", tier: 0 }, { t: "enormous", tier: 0 }, { t: "sticky", tier: 0 },
-    { t: "laminated", tier: 0 }, { t: "borrowed", tier: 0 }, { t: "monogrammed", tier: 0 },
-    { t: "glow-in-the-dark", tier: 1 }, { t: "haunted", tier: 1 }, { t: "inherited", tier: 1 },
-    { t: "judgmental", tier: 1 }, { t: "singing", tier: 1 }, { t: "commemorative", tier: 1 },
-    { t: "sentient", tier: 2 }, { t: "bilingual", tier: 2 }, { t: "recently divorced", tier: 2 },
-    { t: "tax-exempt", tier: 2 }, { t: "ordained", tier: 2 },
-  ],
-  noun: [
-    { t: "folding chair", tier: 0 }, { t: "casserole dish", tier: 0 }, { t: "wind chime", tier: 0 },
-    { t: "bucket hat", tier: 0 }, { t: "kayak", tier: 0 }, { t: "dog", tier: 0 },
-    { t: "lawn flamingo", tier: 0 }, { t: "fondue set", tier: 0 }, { t: "road map", tier: 0 },
-    { t: "accordion", tier: 0 },
-    { t: "novelty fish", tier: 1 }, { t: "spoon", tier: 1 }, { t: "jar of pickled eggs", tier: 1 },
-    { t: "rotary phone", tier: 1 }, { t: "Burger King crown", tier: 1 }, { t: "mime costume", tier: 1 },
-    { t: "ventriloquist dummy named Gerald", tier: 2 }, { t: "goose (a different goose)", tier: 2 },
-    { t: "oil painting of a horse in a suit", tier: 2 }, { t: "garden gnome", tier: 2 },
-    { t: "trophy for a sport that doesn't exist", tier: 2 },
-  ],
-  clause: [
-    { t: "that was never returned", tier: 0 }, { t: "from the garage", tier: 0 },
-    { t: "nobody will admit to owning", tier: 0 },
-    { t: "that still rings at night", tier: 1 }, { t: "from 1994", tier: 1 }, { t: "with a secret", tier: 1 },
-    { t: "that keeps showing up in photos", tier: 2 }, { t: "that has a lawyer", tier: 2 },
-    { t: "that remembers everything", tier: 2 },
-  ],
+  // "a [intensity] [quality] noun [clause]"
+  thing: {
+    parts: [
+      { k: "i", name: "intensity", opt: true, needs: "q", pool: [
+        { t: "slightly", tier: 0 }, { t: "extremely", tier: 0 }, { t: "mostly", tier: 0 },
+        { t: "surprisingly", tier: 0 }, { t: "very", tier: 0 },
+        { t: "suspiciously", tier: 1 }, { t: "aggressively", tier: 1 }, { t: "technically", tier: 1 },
+        { t: "legally", tier: 2 }, { t: "spiritually", tier: 2 }, { t: "emotionally", tier: 2 },
+      ] },
+      { k: "q", name: "quality", opt: true, pool: [
+        { t: "loud", tier: 0 }, { t: "quiet", tier: 0 }, { t: "wet", tier: 0 }, { t: "damp", tier: 0 },
+        { t: "tiny", tier: 0 }, { t: "enormous", tier: 0 }, { t: "sticky", tier: 0 },
+        { t: "laminated", tier: 0 }, { t: "borrowed", tier: 0 }, { t: "monogrammed", tier: 0 },
+        { t: "glow-in-the-dark", tier: 1 }, { t: "haunted", tier: 1 }, { t: "inherited", tier: 1 },
+        { t: "judgmental", tier: 1 }, { t: "singing", tier: 1 }, { t: "commemorative", tier: 1 },
+        { t: "sentient", tier: 2 }, { t: "bilingual", tier: 2 }, { t: "recently divorced", tier: 2 },
+        { t: "tax-exempt", tier: 2 }, { t: "ordained", tier: 2 },
+      ] },
+      { k: "n", name: "noun", pool: [
+        { t: "folding chair", tier: 0 }, { t: "casserole dish", tier: 0 }, { t: "wind chime", tier: 0 },
+        { t: "bucket hat", tier: 0 }, { t: "kayak", tier: 0 }, { t: "dog", tier: 0 },
+        { t: "lawn flamingo", tier: 0 }, { t: "fondue set", tier: 0 }, { t: "road map", tier: 0 },
+        { t: "accordion", tier: 0 },
+        { t: "novelty fish", tier: 1 }, { t: "spoon", tier: 1 }, { t: "jar of pickled eggs", tier: 1 },
+        { t: "rotary phone", tier: 1 }, { t: "Burger King crown", tier: 1 }, { t: "mime costume", tier: 1 },
+        { t: "ventriloquist dummy named Gerald", tier: 2 }, { t: "goose (a different goose)", tier: 2 },
+        { t: "oil painting of a horse in a suit", tier: 2 }, { t: "garden gnome", tier: 2 },
+        { t: "trophy for a sport that doesn't exist", tier: 2 },
+      ] },
+      { k: "c", name: "clause", opt: true, pool: [
+        { t: "that was never returned", tier: 0 }, { t: "from the garage", tier: 0 },
+        { t: "nobody will admit to owning", tier: 0 }, { t: "that belongs to {thing}", tier: 0 },
+        { t: "that still rings at night", tier: 1 }, { t: "from 1994", tier: 1 }, { t: "with a secret", tier: 1 },
+        { t: "that once swallowed {thing}", tier: 1 }, { t: "shaped like {thing}", tier: 1 },
+        { t: "that keeps showing up in photos", tier: 2 }, { t: "that has a lawyer", tier: 2 },
+        { t: "that remembers everything", tier: 2 }, { t: "that is in love with {thing}", tier: 2 },
+      ] },
+    ],
+    grow: ["q", "i", "c"],
+  },
 };
-// Order words are added with "+" and removed with "−".
-const THING_GROW = ["q", "i", "c"];
 
 // Story beats. Tokens: {Who}/{who} name, {P}/{p} pronoun, {o}, {pos}, {is}, {has}, {was},
 // {s} (verb ending: "keep{s}"), {where}, {thing}. Keyed by feeling valence where that matters.
@@ -157,7 +248,7 @@ const BEATS = {
     "This happened at {where}, of all places.",
     "{P} would tell you it began at {where}, though that part is disputed.",
     "The trouble started, as it so often does, at {where}.",
-    "Picture {where} on a Tuesday afternoon.",
+    "Picture {where}, mid-afternoon.",
   ],
   dwell: {
     "1": [

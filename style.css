@@ -103,15 +103,27 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
   cursor: pointer;
 }
 .card-body:disabled { cursor: default; }
-.words { cursor: default; display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 0 .28em; }
+.words { cursor: default; flex: 0 1 auto; margin-block: auto; padding-top: 10px; line-height: 1.5; }
+.words > * , .nest > * { margin-right: .3em; }
 .word {
-  font: inherit; color: inherit; background: none; border: 0; padding: 0 1px; margin: 0;
+  font: inherit; color: inherit; background: none; border: 0; padding: 0 1px; margin: 0; text-align: left;
   cursor: pointer; text-decoration: underline dotted color-mix(in srgb, var(--ink) 45%, transparent);
   text-underline-offset: 4px; border-radius: 3px;
 }
 .word:hover:not(:disabled) { background: color-mix(in srgb, var(--slot) 55%, transparent); text-decoration-style: solid; }
 .word:disabled { cursor: default; text-decoration: none; }
-.w-i, .w-c { font-style: italic; }
+.w-i, .w-c, .w-a, .w-t, .w-d { font-style: italic; }
+.plain { color: var(--ink-2); }
+/* A nested thing: its own little bracketed phrase, tunable inside. */
+.nest {
+  display: inline; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  border: 1.5px dashed color-mix(in srgb, var(--thing) 80%, var(--ink-2));
+  background: color-mix(in srgb, var(--thing) 22%, transparent);
+  border-radius: 8px; padding: 1px 4px 1px 6px; font-size: .94em;
+}
+.nest .nest { font-size: .96em; }
+.nest-steps { display: inline-flex; gap: 2px; vertical-align: 1px; }
+.mini.sm { width: 18px; height: 18px; font-size: 11px; }
 .reroll-all {
   border: 0; background: none; color: var(--ink-2); cursor: pointer; font-size: 15px;
   padding: 0 4px; vertical-align: 1px;
