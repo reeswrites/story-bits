@@ -453,3 +453,39 @@ body.verse .bit { font-weight: 500; font-style: italic; }
 .lib-cons input:not([type="checkbox"]) { min-height: 30px; padding: 3px 6px; width: auto; }
 .lib-check { font-size: 15px; }
 .bank-word.filtered { opacity: .6; text-decoration: line-through; }
+
+/* ---- jams v2 ---- */
+.rb-invites { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.rb-invites button { font: 500 13px "IBM Plex Mono", monospace; padding: 7px 11px; border-radius: 6px; border: 1.5px dashed var(--ink); background: var(--card); color: var(--ink); cursor: pointer; min-height: 38px; }
+.rb-mode label { font-size: 12px; padding: 7px 10px; }
+.rb-modename { font: 500 12px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.rb-players li { border-left: 4px solid var(--peer, var(--rule)); }
+.rb-players .role, .rb-players .looking { font: 11px "IBM Plex Mono", monospace; color: var(--ink-2); }
+.room-bar select { font: inherit; font-size: 15px; color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; padding: 6px 8px; min-height: 38px; }
+
+/* Someone else looking at this word or beat. */
+.peer { outline: 2px solid var(--peer); outline-offset: 2px; position: relative; }
+.word.peer::after, .beat.peer::after {
+  content: attr(data-peer); position: absolute; left: 0; top: -1.35em; white-space: nowrap;
+  font: 500 10px/1.6 "IBM Plex Mono", monospace; color: #fff; background: var(--peer); padding: 0 5px; border-radius: 3px; pointer-events: none;
+}
+/* A word or beat with open comments. */
+.noted { text-decoration: underline wavy color-mix(in srgb, var(--accent) 70%, transparent); text-underline-offset: 5px; }
+.word.noted::before { content: attr(data-notes); font: 500 9px "IBM Plex Mono", monospace; color: #fff; background: var(--accent); border-radius: 999px; padding: 0 4px; margin-right: 2px; vertical-align: .6em; }
+
+.jam-notes { margin-top: 10px; border-top: 1px dashed var(--rule); padding-top: 8px; }
+.jam-notes h4 { margin: 0 0 6px; }
+.note { background: color-mix(in srgb, var(--accent) 7%, var(--card)); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; font-size: 14px; }
+.note p { margin: 0; }
+.note.resolved { opacity: .6; }
+.note-quote { font: italic 13px "Fraunces", serif; border: 0; background: none; color: var(--ink-2); padding: 0; cursor: pointer; text-align: left; }
+.note-actions { display: flex; gap: 6px; margin-top: 4px; }
+.note-actions button { font: 500 11px "IBM Plex Mono", monospace; border: 1px solid var(--rule); background: none; color: var(--ink-2); border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+.jam-note-form { display: flex; gap: 6px; margin-top: 6px; }
+.jam-note-form input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; padding: 6px 10px; min-height: 38px; }
+.jam-note-form button { font: 500 13px "IBM Plex Mono", monospace; border: 1.5px solid var(--ink); background: var(--card); color: var(--ink); border-radius: 8px; padding: 0 12px; cursor: pointer; }
+.jam-thread { margin-top: 8px; }
+
+/* Commenters and viewers in a together jam: read and comment, don't tune. */
+body.jam-readonly .controls, body.jam-readonly .legend, body.jam-readonly #shuffle, body.jam-readonly #retell, body.jam-readonly .ghost-slot { display: none !important; }
+.picker.readonly .pk-step, .picker.readonly .pk-keys, .picker.readonly .pk-actions, .picker.readonly .pk-list, .picker.readonly .pk-own { display: none; }

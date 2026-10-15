@@ -1,0 +1,401 @@
+// Jams: optional shared sessions on the room server (party/: partyserver on Cloudflare).
+// See docs/design.md. Loaded before app.js; everything here runs at call time.
+//
+//   together — one shared piece. Editors tune it live: every change goes out as a small patch
+//              (per card, per beat, per setting). Commenters and viewers see it change; everyone
+//              sees who's looking at which word.
+//   workshop — the host starts everyone from the same piece; each person tunes their own copy;
+//              the copies are revealed side by side for critique (notes, and claps if on).
+//
+// Roles come from the invite link: edit (~edit key), comment (~comment key), or view (no key).
+// Everything the jam sends is checked with the same parsers links use.
+
+const ROOMS_PROD = "story-bits-rooms.peregrine-rd.workers.dev";
+const ROOMS_HOST = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? `${location.hostname}:8799` : ROOMS_PROD;
+const ROOM_CODE = /^[A-Z0-9]{4,8}$/;
+const ROOM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const newRoomCode = () => Array.from({ length: 5 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join("");
+const ROLE_RANK = { view: 0, comment: 1, edit: 2 };
+const ROLE_NAMES = { edit: "editor", comment: "commenter", view: "viewer" };
+
+// One id per tab (so two tabs on one laptop are two people), kept across reloads.
+function playerId() {
+  try {
+    let id = sessionStorage.getItem("story-bits-player");
+    if (!id) { id = "p-" + crypto.randomUUID(); sessionStorage.setItem("story-bits-player", id); }
+    return id;
+  } catch { return (window.__pid ||= "p-" + crypto.randomUUID()); }
+}
+const NAME_KEY = "story-bits-name";
+const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; } };
+
+const jamData = () => state.room?.data;
+const jamRole = () => state.room?.you?.role || "view";
+const jamCan = (need) => !!state.room && ROLE_RANK[jamRole()] >= ROLE_RANK[need];
+const isRoomHost = () => !!jamData() && jamData().host === playerId();
+const roomMe = () => jamData()?.players.find((p) => p.id === playerId());
+const roomSend = (m) => { const ws = state.room?.ws; if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+const inTogether = () => !!state.room && jamData()?.mode === "together";
+const jamReadOnly = () => inTogether() && jamRole() !== "edit";
+const jamLink = (role) => {
+  const keys = jamData()?.keys;
+  const key = role === "edit" ? keys?.edit : role === "comment" ? keys?.comment : "";
+  return `${location.origin}${location.pathname}#jam=${state.room.code}${key ? `~${key}` : ""}`;
+};
+
+function openRoom(code, key = "") {
+  if (!ROOMS_HOST || !ROOM_CODE.test(code)) return;
+  if (state.room) leaveRoom(true);
+  if (state.game) leaveGame();
+  state.room = { code, key, ws: null, data: null, you: null, doc: null, lastSent: null, lastSel: null, presence: [], tries: 0, phase: null, round: 0, applying: false };
+  document.body.classList.add("in-room");
+  connectRoom();
+  renderRoomBar();
+  history.replaceState(null, "", toHash());
+}
+function connectRoom() {
+  const room = state.room;
+  if (!room) return;
+  const proto = /^(localhost|127\.0\.0\.1)/.test(ROOMS_HOST) ? "ws" : "wss";
+  const ws = new WebSocket(`${proto}://${ROOMS_HOST}/parties/story-room/${room.code}${room.key ? `?k=${encodeURIComponent(room.key)}` : ""}`);
+  room.ws = ws;
+  ws.addEventListener("open", () => { room.tries = 0; ws.send(JSON.stringify({ t: "hello", pid: playerId(), name: savedName() })); renderRoomBar(); });
+  ws.addEventListener("message", (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (state.room !== room) return;
+    if (m.t === "state" && m.room && typeof m.room === "object") syncRoom(m.room, m.you);
+    else if (m.t === "doc" && m.doc) { room.doc = m.doc; applyDoc(); }
+    else if (m.t === "patch" && m.set && typeof m.set === "object") {
+      if (!room.doc) { roomSend({ t: "sync" }); return; }
+      patchInto(room.doc, m.set);
+      if (m.by === playerId()) return; // our own change, already on screen
+      applyDoc();
+    }
+    else if (m.t === "presence" && Array.isArray(m.list)) { room.presence = m.list; paintPeers(); renderRoomBar(); }
+    else if (m.t === "error") toast(String(m.error || "The jam said no."));
+  });
+  ws.addEventListener("close", () => {
+    if (state.room !== room) return;
+    room.ws = null;
+    renderRoomBar();
+    // Reconnect with backoff; the jam keeps the piece, your copy and comments.
+    setTimeout(() => state.room === room && connectRoom(), Math.min(8000, 500 * 2 ** room.tries++));
+  });
+}
+function leaveRoom(quiet) {
+  const room = state.room;
+  if (!room) return;
+  state.room = null;
+  room.ws?.close();
+  document.body.classList.remove("in-room", "room-compare", "jam-readonly", "room-host", "room-lobby");
+  if (state.game) leaveGame();
+  state.compare = null;
+  $("#compare").hidden = true;
+  $("#room-bar").hidden = true;
+  if (!quiet) render();
+}
+
+// ---------- together: one shared piece ----------
+// The piece as the jam holds it: a link snapshot without anyone's pins.
+const docOf = () => { const s = clone(snapshot()); delete s.pn; return s; };
+function patchInto(doc, set) {
+  for (const [path, val] of Object.entries(set)) {
+    const [top, sub] = path.split(".");
+    if (sub === undefined) { if (val === null) delete doc[top]; else doc[top] = val; }
+    else { doc[top] = doc[top] && typeof doc[top] === "object" ? doc[top] : {}; if (val === null) delete doc[top][sub]; else doc[top][sub] = val; }
+  }
+}
+// What changed between two pieces, as patch paths; "whole" when the grammar itself changed.
+function diffDoc(a, b) {
+  if (a.g !== b.g || JSON.stringify(a.gx) !== JSON.stringify(b.gx)) return "whole";
+  const set = {};
+  for (const k of ["v", "f", "d", "s", "l"]) if (!same(a[k], b[k])) set[k] = b[k];
+  for (const top of ["p", "b"]) {
+    for (const k of new Set([...Object.keys(a[top] || {}), ...Object.keys(b[top] || {})])) {
+      if (!same(a[top]?.[k], b[top]?.[k])) set[`${top}.${k}`] = b[top]?.[k] ?? null;
+    }
+  }
+  return set;
+}
+// Show the shared piece, keeping your own pins and selection.
+function applyDoc() {
+  const room = state.room;
+  if (!room?.doc || !inTogether()) return;
+  const parsed = parseSnapshot(room.doc);
+  if (!parsed) return;
+  const keep = { pins: state.pins, sel: state.sel };
+  const before = G;
+  room.applying = true;
+  try {
+    applySnapshot(parsed);
+    Object.assign(state, keep);
+    // A different grammar: your selection and pins were in the old one.
+    if (G !== before) { state.sel = null; state.pins = []; renderBankForm(); renderBank(); renderCast(); renderLibrary(); }
+    render();
+  } finally {
+    room.applying = false;
+  }
+  room.lastSent = docOf();
+}
+// Before a render: someone who can't edit has no changes to keep; put the shared piece back.
+function jamBeforeRender() {
+  const room = state.room;
+  if (!room || room.applying || !jamReadOnly() || !room.doc || !room.lastSent) return;
+  if (same(docOf(), room.lastSent)) return;
+  const parsed = parseSnapshot(room.doc);
+  if (!parsed) return;
+  const keep = { pins: state.pins, sel: state.sel };
+  applySnapshot(parsed);
+  Object.assign(state, keep);
+  toast(jamRole() === "comment" ? "You're commenting in this jam: leave a note on the word instead." : "You're viewing this jam. Ask for an edit link to change it.");
+}
+// After a render: editors send what they changed; everyone says where they're looking.
+function jamAfterRender() {
+  const room = state.room;
+  if (!room) return;
+  if (inTogether() && jamRole() === "edit" && !room.applying && room.ws?.readyState === 1 && room.data) {
+    const now = docOf();
+    if (!room.doc && !room.data.rev) {
+      // A new together jam: this piece is where it starts.
+      roomSend({ t: "doc", doc: now });
+      room.doc = clone(now);
+      room.lastSent = clone(now);
+    } else if (room.doc && room.lastSent) {
+      const set = diffDoc(room.lastSent, now);
+      if (set === "whole") { roomSend({ t: "doc", doc: now }); room.doc = clone(now); }
+      else if (Object.keys(set).length) { roomSend({ t: "patch", set }); patchInto(room.doc, set); }
+      room.lastSent = clone(now);
+    }
+  }
+  const sel = state.sel ? (state.sel.beat ? `beat|${state.sel.beat}` : `${state.sel.slot}|${state.sel.path.join(".")}`) : null;
+  if (sel !== room.lastSel) { room.lastSel = sel; roomSend({ t: "presence", sel }); }
+  paintPeers();
+  paintNotes();
+}
+
+// ---------- presence and comments on the page ----------
+const hue = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+function anchorEls(at) {
+  if (!at) return [];
+  const [slot, p] = at.split("|");
+  if (slot === "beat") return [...document.querySelectorAll(`.beat[data-beat="${CSS.escape(p)}"]`)];
+  return [...document.querySelectorAll(`.word[data-slot="${CSS.escape(slot)}"][data-path="${CSS.escape(p)}"]`)];
+}
+function paintPeers() {
+  document.querySelectorAll(".peer").forEach((el) => { el.classList.remove("peer"); delete el.dataset.peer; el.style.removeProperty("--peer"); });
+  if (!state.room) return;
+  for (const p of state.room.presence) {
+    if (p.pid === playerId() || !p.sel) continue;
+    for (const el of anchorEls(p.sel)) {
+      if (el.classList.contains("peer")) continue;
+      el.classList.add("peer");
+      el.dataset.peer = p.name || "someone";
+      el.style.setProperty("--peer", `hsl(${hue(p.pid)} 65% 45%)`);
+    }
+  }
+}
+const openNotes = () => (jamData()?.comments || []).filter((c) => !c.entry);
+function paintNotes() {
+  document.querySelectorAll(".noted").forEach((el) => { el.classList.remove("noted"); el.removeAttribute("data-notes"); });
+  if (!state.room) return;
+  const counts = {};
+  for (const c of openNotes()) if (!c.resolved && c.at) counts[c.at] = (counts[c.at] || 0) + 1;
+  for (const [at, n] of Object.entries(counts)) for (const el of anchorEls(at)) { el.classList.add("noted"); el.dataset.notes = n; }
+}
+
+// Comments in the picker: the notes on this word or beat, and a box to add one.
+function jamPickerHtml(at, quote) {
+  if (!state.room) return "";
+  const here = openNotes().filter((c) => c.at === at);
+  const list = here.map((c) => noteHtml(c)).join("");
+  const form = jamCan("comment") ? `<form class="jam-note-form" data-note-at="${esc(at)}" data-note-quote="${esc(quote)}" autocomplete="off">
+      <input name="note" maxlength="600" placeholder="Comment on “${esc(quote.slice(0, 40))}”" aria-label="Comment">
+      <button type="submit">Comment</button></form>` : "";
+  return `<div class="jam-notes">${list ? `<h4 class="dial-label">Comments</h4>${list}` : ""}${form}</div>`;
+}
+function noteHtml(c, showQuote = false) {
+  const mine = c.pid === playerId();
+  return `<div class="note${c.resolved ? " resolved" : ""}">
+    ${showQuote && c.quote ? `<button class="note-quote" data-jc-show="${esc(c.at || "")}">“${esc(c.quote)}”</button>` : ""}
+    <p><b>${esc(c.name || "someone")}</b> ${esc(c.text)}</p>
+    <div class="note-actions">
+      ${jamCan("comment") ? `<button data-jc-resolve="${esc(c.id)}" data-done="${c.resolved ? "" : "1"}">${c.resolved ? "Reopen" : "Resolve"}</button>` : ""}
+      ${mine || isRoomHost() ? `<button data-jc-delete="${esc(c.id)}">Delete</button>` : ""}
+    </div>
+  </div>`;
+}
+function showAnchor(at) {
+  if (!at) return;
+  const [slot, p] = at.split("|");
+  if (slot === "beat") { if (stanza().paras.flat().includes(p)) selectBeat(p); }
+  else { const el = anchorEls(at)[0]; if (el) select(slot, p.split("."), el); }
+  selectedEl()?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// ---------- workshop ----------
+function clapDisabled(e) {
+  if (!state.room) return false;
+  const d = jamData();
+  return d?.phase !== "vote" || e.id === playerId() || !jamCan("comment") || (roomMe()?.clapsLeft ?? 0) <= 0;
+}
+const clapsOn = () => !state.room || !!jamData()?.rules?.claps;
+// Notes on one copy, and a box to add one (comment and edit roles).
+function jamCardHtml(e) {
+  if (!state.room || !e.id) return "";
+  const d = jamData();
+  const notes = (d?.comments || []).filter((c) => c.entry === e.id && c.round === d.round);
+  const form = d?.phase === "vote" && jamCan("comment") && e.id !== playerId() ? `<form class="jam-note-form" data-note-entry="${esc(e.id)}" autocomplete="off">
+      <input name="note" maxlength="600" placeholder="A note for ${esc(e.name || "them")}" aria-label="Note">
+      <button type="submit">Add</button></form>` : "";
+  return notes.length || form ? `<div class="jam-notes">${notes.map((c) => noteHtml(c)).join("")}${form}</div>` : "";
+}
+
+// The jam's view arrives on every change. Bring the page in line with its mode and phase.
+function syncRoom(d, you) {
+  const room = state.room;
+  room.data = d;
+  room.you = you || room.you;
+  // The owner opened the jam without a key; keep the edit key so a reload stays an editor.
+  if (!room.key && d.keys?.edit && jamRole() === "edit") { room.key = d.keys.edit; history.replaceState(null, "", toHash()); }
+  const fresh = room.phase !== d.phase || room.round !== d.round || room.mode !== d.mode;
+  room.phase = d.phase;
+  room.round = d.round;
+  room.mode = d.mode;
+  document.body.classList.toggle("jam-readonly", jamReadOnly());
+  if (d.mode === "together") {
+    if (state.game) leaveGame();
+    if (state.compare) { state.compare = null; $("#compare").hidden = true; }
+    if (room.doc && fresh) applyDoc();
+  } else {
+    const c = d.challenge && parseChallenge(d.challenge);
+    if (d.phase === "play" && c && jamCan("edit")) {
+      if (!state.game || challengeId(state.game.c) !== challengeId(c)) startGame(c, undefined, savedName());
+      if (state.compare) { state.compare = null; $("#compare").hidden = true; }
+    } else if (state.game) leaveGame();
+    if ((d.phase === "vote" || d.phase === "results") && c) {
+      const entries = (d.entries || []).map((e) => {
+        const cp = parseCopy({ c: d.challenge, me: e.me, name: e.name });
+        return cp && { id: e.id, name: cp.name, me: cp.me, votes: Number(e.claps) || 0 };
+      }).filter(Boolean);
+      state.compare = { c, entries };
+      $("#compare").hidden = false;
+      renderCompare();
+      if (fresh) $("#compare").scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (state.compare) { state.compare = null; $("#compare").hidden = true; }
+  }
+  renderRoomBar();
+  render();
+}
+
+function renderRoomBar() {
+  const bar = $("#room-bar");
+  const room = state.room;
+  if (!room) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const d = room.data;
+  const me = roomMe();
+  const role = jamRole();
+  const host = d?.players.find((p) => p.id === d.host);
+  const looking = (pid) => room.presence.find((x) => x.pid === pid)?.sel;
+  const players = (d?.players || []).map((p) => `<li class="${p.online ? "" : "away"}" style="--peer: hsl(${hue(p.id)} 65% 45%)">${p.id === d.host ? `<span title="host">★</span> ` : ""}${esc(p.name || "someone")}${p.id === playerId() ? " (you)" : ""} <span class="role">${ROLE_NAMES[p.role] || "viewer"}</span>${d.mode === "workshop" && d.phase === "play" && p.submitted ? ` <span class="ok">sent</span>` : ""}${d.mode === "workshop" && d.phase === "vote" && d.rules.claps && p.role !== "view" ? ` <span class="claps">${p.clapsLeft} 👏</span>` : ""}${d.mode === "together" && looking(p.id) && p.id !== playerId() ? ` <span class="looking">on a word</span>` : ""}</li>`).join("");
+  let body = "";
+  if (!d) body = `<p class="rb-phase">${room.ws ? "Joining…" : "Connecting…"}</p>`;
+  else if (d.mode === "together") {
+    const open = openNotes().filter((c) => !c.resolved);
+    const done = openNotes().filter((c) => c.resolved);
+    body = `<p class="rb-phase">${role === "edit" ? "Together: everyone tunes this one piece live. Your changes go to everyone; anyone looking at a word shows up on it." : role === "comment" ? "Together: you're commenting. Tap any word or beat to leave a note on it." : "Together: you're watching. The piece changes as others tune it."}</p>
+      <details class="rb-history" ${open.length ? "open" : ""}><summary>${open.length} open comment${open.length === 1 ? "" : "s"}${done.length ? `, ${done.length} resolved` : ""}</summary>
+        <div class="jam-thread">${open.map((c) => noteHtml(c, true)).join("") || `<p class="empty">No comments yet${jamCan("comment") ? ". Tap a word to leave one." : "."}</p>`}
+        ${done.length ? `<details><summary>Resolved</summary>${done.map((c) => noteHtml(c, true)).join("")}</details>` : ""}</div>
+      </details>`;
+  } else if (d.phase === "lobby") body = isRoomHost()
+    ? `<p class="rb-phase">Workshop: set up a piece with the controls above, then start a round. Everyone gets the same start, tunes their own copy, and the copies come back for critique.</p>
+       <div class="cp-row">
+         <label class="bf-field"><span class="dial-label">Move limit</span><select id="rb-moves">${[0, 1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === d.rules.moves ? "selected" : ""}>${n ? `${n} move${n === 1 ? "" : "s"}` : "no limit"}</option>`).join("")}</select></label>
+         <label class="lib-check"><input type="checkbox" id="rb-claps" ${d.rules.claps ? "checked" : ""}> Claps (a winner)</label>
+       </div>
+       <div class="cp-row"><button id="rb-start" class="primary">Start with this piece</button><button id="rb-daily" class="ghost">Start with today's bit</button></div>`
+    : `<p class="rb-phase">Workshop: waiting for ${esc(host?.name || "the host")} to start a round.${role === "comment" ? " You're a critic this time: you'll read and comment on everyone's copies." : ""}</p>`;
+  else if (d.phase === "play") {
+    const writers = d.players.filter((p) => p.online && p.role === "edit");
+    const sent = d.players.filter((p) => p.submitted).length;
+    body = `<p class="rb-phase">Round ${d.round}: ${role === "edit" ? `tune your copy below, then send it.` : "the writers are tuning their copies."} ${sent} of ${writers.length} sent. ${d.rules.moves ? `Limit: ${d.rules.moves} move${d.rules.moves === 1 ? "" : "s"}.` : "No move limit."}</p>${isRoomHost() ? `<div class="cp-row"><button id="rb-vote" class="primary" ${sent ? "" : "disabled"}>Reveal for critique</button></div>` : ""}`;
+  } else if (d.phase === "vote") body = `<p class="rb-phase">Critique: read every copy against the original, leave notes${d.rules.claps ? `, and clap for your favorites (${me?.clapsLeft ?? 0} of ${d.clapsEach} left, not your own)` : ""}.</p>${isRoomHost() ? `<div class="cp-row"><button id="rb-end" class="primary">End the round</button></div>` : ""}`;
+  else if (d.phase === "results") {
+    const best = Math.max(0, ...d.entries.map((e) => e.claps));
+    const winners = d.rules.claps ? d.entries.filter((e) => best && e.claps === best).map((e) => e.name || "someone") : [];
+    body = `<p class="rb-phase">${winners.length ? `<b>${esc(winners.join(" & "))}</b> took round ${d.round} with ${best} 👏.` : `Round ${d.round} is done.`} Saved to the jam's history with everyone's notes.</p>${isRoomHost() ? `<div class="cp-row"><button id="rb-lobby" class="primary">Next round</button></div>` : ""}`;
+  }
+  const history = d?.mode === "workshop" && d.history?.length ? `<details class="rb-history"><summary>${d.stored} stored round${d.stored === 1 ? "" : "s"}</summary><ol>${d.history.map((h) => `<li>Round ${h.round}${h.top.length ? `: ${esc(h.top.join(" & "))}` : ""}</li>`).join("")}</ol></details>` : "";
+  const invites = d?.keys ? `<div class="rb-invites"><span class="dial-label">Invite</span>
+      <button class="ghost" data-invite="edit">Edit link</button><button class="ghost" data-invite="comment">Comment link</button><button class="ghost" data-invite="view">View link</button></div>` : "";
+  bar.innerHTML = `
+    <div class="rb-top">
+      <div><span class="eyebrow">Jam · you're ${role === "edit" ? "an editor" : role === "comment" ? "a commenter" : "a viewer"}</span><span class="rb-code">${esc(room.code)}</span>${room.ws ? "" : ` <span class="rb-off">reconnecting…</span>`}</div>
+      <div class="rb-actions">
+        ${isRoomHost() && d ? `<span class="seg rb-mode"><label><input type="radio" name="rb-mode" value="together" ${d.mode === "together" ? "checked" : ""}>together</label><label><input type="radio" name="rb-mode" value="workshop" ${d.mode === "workshop" ? "checked" : ""}>workshop</label></span>` : d ? `<span class="rb-modename">${d.mode}</span>` : ""}
+        <button id="rb-leave" class="ghost subtle">Leave</button>
+      </div>
+    </div>
+    ${invites}
+    <label class="gb-name rb-name"><span class="dial-label">Your name</span><input id="rb-name" maxlength="${NAME_MAX}" value="${esc(me?.name ?? savedName())}" placeholder="so they know it's you"></label>
+    <ul class="rb-players">${players}</ul>
+    ${body}
+    ${history}
+    ${isRoomHost() && d && (d.stored || d.comments.length) ? `<p><button id="rb-forget" class="ghost subtle">Forget this jam's history and comments</button></p>` : ""}
+    <p class="rb-fine">This jam keeps its piece, comments and finished rounds (nicknames only) so you can come back. It deletes itself after 30 days with no activity; the host can wipe it sooner.</p>`;
+  document.body.classList.toggle("room-host", isRoomHost());
+  document.body.classList.toggle("room-lobby", d?.phase === "lobby" && d?.mode === "workshop");
+}
+
+// ---------- events ----------
+document.addEventListener("click", (e) => {
+  if (!(e.target instanceof Element) || !state.room) return;
+  const t = e.target.closest("button");
+  if (!t) return;
+  const d = t.dataset;
+  if (d.invite) {
+    const what = { edit: "Anyone with it can tune the piece.", comment: "Anyone with it can comment and clap, not edit.", view: "Anyone with it can watch." }[d.invite];
+    copy(jamLink(d.invite), `${cap(d.invite)} link copied. ${what}`);
+  }
+  else if (t.id === "rb-leave") leaveRoom();
+  else if (t.id === "rb-start" || t.id === "rb-daily") {
+    const n = jamData().rules.moves;
+    const c = t.id === "rb-daily" ? { ...dailyChallenge(), n } : { h: roomMe()?.name || "", n, s: fixedSnapshot() };
+    roomSend({ t: "start", c });
+  }
+  else if (t.id === "rb-vote") roomSend({ t: "vote" });
+  else if (t.id === "rb-end") roomSend({ t: "end" });
+  else if (t.id === "rb-lobby") roomSend({ t: "lobby" });
+  else if (t.id === "rb-forget") { if (confirm("Forget every stored round and comment in this jam? This can't be undone.")) roomSend({ t: "forget" }); }
+  else if (t.id === "gb-send") { roomSend({ t: "submit", me: fixedSnapshot() }); toast("Sent to the jam."); }
+  else if (d.jcResolve) roomSend({ t: "resolve", id: d.jcResolve, done: !!d.done });
+  else if (d.jcDelete) roomSend({ t: "uncomment", id: d.jcDelete });
+  else if (d.jcShow !== undefined) showAnchor(d.jcShow);
+});
+document.addEventListener("submit", (e) => {
+  const f = e.target;
+  if (!(f instanceof HTMLFormElement) || !f.matches(".jam-note-form")) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const text = cleanWord(f.elements.note.value);
+  if (!text) return;
+  if (f.dataset.noteEntry) roomSend({ t: "comment", entry: f.dataset.noteEntry, text });
+  else roomSend({ t: "comment", at: f.dataset.noteAt, quote: f.dataset.noteQuote, text });
+  f.elements.note.value = "";
+}, true);
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (!(el instanceof Element) || !state.room) return;
+  if (el.name === "rb-mode") roomSend({ t: "mode", mode: el.value });
+  else if (el.id === "rb-moves" || el.id === "rb-claps") roomSend({ t: "rules", moves: +$("#rb-moves").value, claps: $("#rb-claps").checked });
+});
+let nameTimer;
+document.addEventListener("input", (e) => {
+  if (!(e.target instanceof Element) || e.target.id !== "rb-name" || !state.room) return;
+  const n = cleanName(e.target.value);
+  try { localStorage.setItem(NAME_KEY, n); } catch {}
+  clearTimeout(nameTimer);
+  nameTimer = setTimeout(() => roomSend({ t: "name", name: n }), 300);
+});
