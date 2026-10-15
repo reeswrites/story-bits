@@ -140,7 +140,7 @@ function renderBeatPicker(el, key) {
   }).join("");
   el.innerHTML = `
     <div class="pk-head">
-      <span class="pk-crumb">Story › ${esc(beatGroup(key).name)}</span>
+      <span class="pk-crumb" id="pk-title"><span class="sr">Tune: </span>Story › ${esc(beatGroup(key).name)}</span>
       <button class="pk-x" data-act="close" aria-label="Close">✕</button>
     </div>
     <div class="pk-step">
@@ -161,8 +161,51 @@ function renderBeatPicker(el, key) {
   el.hidden = false;
   positionPicker();
 }
+// The picker is a dialog. Opening it moves focus in; tuning keeps focus where it was (the
+// contents are redrawn each time); closing it puts focus back on the word or sentence.
+const selKey = (s) => (!s ? null : s.beat ? `beat|${s.beat}` : `${s.slot}|${s.path.join(".")}|${s.occ || 0}`);
+let pickerFor = null; // { key, sel } of the word the open picker belongs to
+function focusKeyOf(a) {
+  if (!(a instanceof Element)) return null;
+  if (a.dataset.act) return `[data-act="${a.dataset.act}"]`;
+  if (a.dataset.opt !== undefined) return `[data-opt="${a.dataset.opt}"]`;
+  if (a.name) return `[name="${a.name}"]`;
+  return null;
+}
+// The element that opens a selection, for focus: the word, or the sentence's button.
+function openerOf(s) {
+  if (!s) return null;
+  if (s.beat) return document.querySelector(`.beat-btn[data-beat-btn="${s.beat}"]`);
+  const els = document.querySelectorAll(`.word[data-slot="${s.slot}"][data-path="${s.path.join(".")}"]`);
+  return els[Math.min(s.occ || 0, els.length - 1)] || null;
+}
 function renderPicker() {
   const el = $("#picker");
+  const active = document.activeElement;
+  const focusIn = el.contains(active);
+  const lost = !active || active === document.body;
+  const again = focusIn && active !== el ? focusKeyOf(active) : null;
+  const scrollTop = el.querySelector(".pk-list")?.scrollTop || 0;
+  drawPicker(el);
+  const key = selKey(state.sel);
+  if (!el.hidden) {
+    el.setAttribute("aria-modal", String(el.classList.contains("sheet")));
+    const list = el.querySelector(".pk-list");
+    if (pickerFor?.key === key) {
+      if (list) list.scrollTop = scrollTop;
+      if (focusIn || lost) (again && el.querySelector(again)) ? el.querySelector(again).focus({ preventScroll: true }) : el.focus({ preventScroll: true });
+    } else {
+      el.focus({ preventScroll: true });
+      el.querySelector(".pk-opt.cur")?.scrollIntoView({ block: "nearest" });
+    }
+    pickerFor = { key, sel: state.sel };
+  } else if (pickerFor) {
+    const was = pickerFor.sel;
+    pickerFor = null;
+    if (focusIn || lost) openerOf(was)?.focus({ preventScroll: true });
+  }
+}
+function drawPicker(el) {
   const sel = state.sel;
   if (sel && sel.beat) {
     if (!stanza().paras.flat().includes(sel.beat)) { state.sel = null; el.hidden = true; return; }
@@ -188,7 +231,7 @@ function renderPicker() {
 
   el.innerHTML = `
     <div class="pk-head">
-      <span class="pk-crumb">${crumbs(sel.slot, sel.path).map(esc).join(" › ")}</span>
+      <span class="pk-crumb" id="pk-title"><span class="sr">Tune: </span>${crumbs(sel.slot, sel.path).map(esc).join(" › ")}</span>
       <button class="pk-x" data-act="close" aria-label="Close">✕</button>
     </div>
     <div class="pk-step">
@@ -244,7 +287,6 @@ function positionPicker() {
 function selectBeat(key) {
   state.sel = state.sel && state.sel.beat === key ? null : { beat: key };
   render();
-  if (state.sel) selectedEl()?.focus({ preventScroll: true });
 }
 function surpriseBeat(key) {
   const ctx = context();
@@ -257,8 +299,8 @@ function select(slot, path, el) {
   const occ = Math.max(0, els.indexOf(el));
   if (state.sel && state.sel.slot === slot && same(state.sel.path, path) && state.sel.occ === occ) state.sel = null;
   else state.sel = { slot, path, occ };
+  hideFirstHint(true);
   render();
-  if (state.sel) selectedEl()?.focus({ preventScroll: true });
 }
 function step(dir) {
   const s = state.sel;
@@ -497,6 +539,141 @@ function compareLink() {
 }
 
 
+// ---------- undo ----------
+// A local history of tuning: words, beats, form, length, dial, seed and grammar. render() notes
+// each change as a step { from, to }. Undo puts back only what that step changed and renders as
+// usual, so in a together jam it goes out as ordinary patches (and leaves others' edits alone),
+// and in a challenge it counts like putting a change back. Changes that arrive from a jam move
+// the baseline without adding a step. Starting or leaving a jam or challenge starts a new history.
+const HISTORY_MAX = 200;
+const undoStack = [], redoStack = [];
+let histNow = null; // { at, key, ctx }: the piece as of the last render
+let histQuiet = false;
+const histCtx = () => (state.game ? `g:${challengeId(state.game.c)}` : state.room ? `r:${state.room.code}` : "solo");
+const histTake = () => ({ G, pick: clone(state.pick), beats: { ...state.beats }, form: state.form, len: state.len, dial: state.dial, seed: state.seed });
+const histKey = (h) => JSON.stringify([h.G.id, srcOf.get(h.G)?.ver, h.pick, h.beats, h.form, h.len, h.dial, h.seed]);
+function histNote() {
+  const ctx = histCtx();
+  const at = histTake();
+  const key = histKey(at);
+  if (!histNow || histNow.ctx !== ctx) { undoStack.length = redoStack.length = 0; histNow = { at, key, ctx }; renderUndo(); return; }
+  if (histNow.at.G === at.G && histNow.key === key) { renderUndo(); return; }
+  if (!histQuiet && !state.room?.applying) {
+    undoStack.push({ from: histNow.at, to: at });
+    if (undoStack.length > HISTORY_MAX) undoStack.shift();
+    redoStack.length = 0;
+  }
+  histNow = { at, key, ctx };
+  renderUndo();
+}
+// Move the piece from one side of a step to the other, touching only what the step changed.
+function histPut(want, was) {
+  if (want.G !== was.G) {
+    useGrammar(want.G);
+    Object.assign(state, { grammar: G.id, pick: clone(want.pick), beats: { ...want.beats }, form: want.form, len: want.len, dial: want.dial, seed: want.seed, sel: null, pins: [] });
+    renderBankForm(); renderBank(); renderCast(); renderLibrary();
+    return;
+  }
+  for (const k of new Set([...Object.keys(want.pick), ...Object.keys(was.pick)])) {
+    if (!same(want.pick[k], was.pick[k]) && want.pick[k]) state.pick[k] = clone(want.pick[k]);
+  }
+  const beats = { ...state.beats };
+  for (const k of new Set([...Object.keys(want.beats), ...Object.keys(was.beats)])) {
+    if (want.beats[k] === was.beats[k]) continue;
+    if (want.beats[k] === undefined) delete beats[k]; else beats[k] = want.beats[k];
+  }
+  state.beats = beats;
+  for (const f of ["form", "len", "dial", "seed"]) if (want[f] !== was[f]) state[f] = want[f];
+  state.len = Math.max(1, Math.min(maxLen(), state.len));
+}
+function histMove(from, to, back) {
+  const step = from.pop();
+  if (!step || !canUndo()) { if (step) from.push(step); return; }
+  if (back) histPut(step.from, step.to); else histPut(step.to, step.from);
+  to.push(step);
+  histQuiet = true;
+  try { render(); } finally { histQuiet = false; }
+}
+const canUndo = () => !(state.room && jamReadOnly());
+const undo = () => histMove(undoStack, redoStack, true);
+const redo = () => histMove(redoStack, undoStack, false);
+function renderUndo() {
+  const u = $("#undo"), r = $("#redo");
+  if (!u) return;
+  // Shown only when there's something to undo or redo, so the first view stays calm.
+  u.hidden = !undoStack.length || !canUndo();
+  r.hidden = !redoStack.length || !canUndo();
+  // Don't drop keyboard focus when the button you pressed goes away.
+  const a = document.activeElement;
+  if ((a === u && u.hidden) || (a === r && r.hidden)) (!u.hidden ? u : !r.hidden ? r : $("#shuffle")).focus();
+}
+
+// ---------- calm layout: folds, menus, the first-run hint ----------
+// Rules and the sections below the page fold away; whether each is open is remembered in this
+// browser. Menus (With others, More) close when you pick something or click elsewhere.
+const FOLD_KEY = "story-bits-folds";
+function loadFolds() {
+  try { return JSON.parse(localStorage.getItem(FOLD_KEY)) || {}; } catch { return {}; }
+}
+function initFolds() {
+  const saved = loadFolds();
+  document.querySelectorAll("details[data-fold]").forEach((d) => {
+    if (d.dataset.fold in saved) d.open = !!saved[d.dataset.fold];
+    d.addEventListener("toggle", () => saveFold(d.dataset.fold, d.open));
+  });
+  // The Rules drawer is a button and a panel, so its button sits in the toolbar row.
+  document.querySelectorAll("[data-fold-btn]").forEach((b) => setDrawer(b, !!saved[b.dataset.foldBtn], false));
+}
+function saveFold(name, open) {
+  const now = loadFolds();
+  now[name] = open;
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(now)); } catch {}
+}
+function setDrawer(btn, open, save = true) {
+  btn.setAttribute("aria-expanded", String(open));
+  document.getElementById(btn.getAttribute("aria-controls")).hidden = !open;
+  if (save) saveFold(btn.dataset.foldBtn, open);
+}
+// Open every fold around an element, so something that wants your attention can be seen.
+function reveal(el) {
+  for (let d = el?.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
+  const drawer = el?.closest(".drawer");
+  if (drawer) setDrawer(document.querySelector(`[aria-controls="${drawer.id}"]`), true);
+  return el;
+}
+function closeMenus(except) {
+  document.querySelectorAll("details.menu[open]").forEach((d) => { if (d !== except) d.open = false; });
+}
+
+// The first time you open Story Bits, a hint points at a word. Tapping any word, or the ✕,
+// puts it away for good (in this browser).
+const HINT_KEY = "story-bits-hint-seen";
+let hintOn = false;
+function showFirstHint() {
+  try { if (localStorage.getItem(HINT_KEY)) return; } catch { return; }
+  if (state.room || state.game) return;
+  hintOn = true;
+  placeFirstHint();
+}
+function hideFirstHint(forGood) {
+  if (!hintOn && !forGood) return;
+  hintOn = false;
+  $("#first-hint").hidden = true;
+  if (forGood) try { localStorage.setItem(HINT_KEY, "1"); } catch {}
+}
+function placeFirstHint() {
+  const h = $("#first-hint");
+  if (!hintOn || state.sel || state.game || state.room) { h.hidden = true; return; }
+  const w = document.querySelector("#bit .word");
+  if (!w) { h.hidden = true; return; }
+  h.hidden = false;
+  const r = w.getBoundingClientRect();
+  const left = Math.max(16, Math.min(r.left + scrollX + r.width / 2 - 24, scrollX + document.documentElement.clientWidth - h.offsetWidth - 16));
+  h.style.left = `${left}px`;
+  h.style.top = `${r.top + scrollY - h.offsetHeight - 10}px`;
+  h.style.setProperty("--arrow", `${Math.max(14, r.left + scrollX + r.width / 2 - left - 7)}px`);
+}
+
 // ---------- render ----------
 const $ = (s) => document.querySelector(s);
 
@@ -553,6 +730,8 @@ function render() {
 
   renderPicker();
   if (state.room) jamAfterRender();
+  histNote();
+  placeFirstHint();
 }
 
 // Switch to another grammar: a fresh piece in its first form.
@@ -708,6 +887,8 @@ function copy(text, ok) {
 
 document.addEventListener("click", (e) => {
   if (!(e.target instanceof Element)) return;
+  closeMenus(e.target.closest("details.menu"));
+  if (e.target.closest(".menu-item")) closeMenus();
   const t = e.target.closest("button");
   const inPicker = e.target.closest("#picker");
   if (!t) {
@@ -741,6 +922,11 @@ document.addEventListener("click", (e) => {
   }
   if (inPicker) return;
   if (t.classList.contains("word")) { select(t.dataset.slot, pathOf(t), t); return; }
+  if (t.dataset.beatBtn) { selectBeat(t.dataset.beatBtn); return; }
+  if (t.dataset.foldBtn) { setDrawer(t, t.getAttribute("aria-expanded") !== "true"); return; }
+    if (t.id === "undo") { undo(); return; }
+  if (t.id === "redo") { redo(); return; }
+  if (t.classList.contains("fh-x")) { hideFirstHint(true); return; }
   if (t.dataset.add) { addWord(t.dataset.add, pathOf(t)); return; }
   if (state.sel && !t.closest(".controls")) state.sel = null;
   if (t.dataset.roll) reroll([t.dataset.roll]);
@@ -831,28 +1017,50 @@ document.addEventListener("mouseover", (e) => {
   if (w) w.closest(".ph")?.classList.add("hl");
 });
 
+// On the phone sheet the picker is modal: Tab cycles inside it.
+function trapPickerFocus(e) {
+  const el = $("#picker");
+  if (el.hidden || !el.classList.contains("sheet")) return false;
+  const items = [...el.querySelectorAll("button:not([disabled]), input, textarea, select, a[href], [tabindex='0']")].filter((x) => x.offsetParent !== null);
+  if (!items.length) return false;
+  const first = items[0], last = items[items.length - 1];
+  const a = document.activeElement;
+  if (!el.contains(a)) { e.preventDefault(); first.focus(); return true; }
+  if (e.shiftKey && (a === first || a === el)) { e.preventDefault(); last.focus(); return true; }
+  if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); return true; }
+  return false;
+}
+
 document.addEventListener("keydown", (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
   const target = e.target instanceof Element ? e.target : document.body;
   const typing = target.closest("input, textarea, select");
-  if (!typing && (e.key === "Enter" || e.key === " ") && target.closest(".beat") && !target.closest("button")) {
-    e.preventDefault();
-    selectBeat(target.closest(".beat").dataset.beat);
+  // Undo and redo: ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Shift+Z (and Ctrl+Y). Text fields keep their own.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !typing) {
+    const k = e.key.toLowerCase();
+    if (k === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if (k === "y" && e.ctrlKey) { e.preventDefault(); redo(); return; }
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "Tab" && trapPickerFocus(e)) return;
+  if (e.key === "Escape" && document.querySelector("details.menu[open]")) {
+    const open = document.querySelector("details.menu[open]");
+    open.open = false;
+    open.querySelector("summary").focus();
     return;
   }
   if (state.sel && state.sel.beat && !typing) {
     const s = state.sel;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); step(-1); selectedEl()?.focus({ preventScroll: true }); return; }
-    if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); step(1); selectedEl()?.focus({ preventScroll: true }); return; }
-    if (e.key === "Escape") { state.sel = null; render(); document.querySelector(`.beat[data-beat="${s.beat}"]`)?.focus(); return; }
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); step(-1); return; }
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); step(1); return; }
+    if (e.key === "Escape") { state.sel = null; render(); return; }
     if (e.key === "p") { togglePin("beat", [s.beat]); return; }
     if (e.key === "?") { surpriseBeat(s.beat); return; }
   }
   if (state.sel && !state.sel.beat && !typing) {
     const s = state.sel;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); step(-1); selectedEl()?.focus({ preventScroll: true }); return; }
-    if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); step(1); selectedEl()?.focus({ preventScroll: true }); return; }
-    if (e.key === "Escape") { state.sel = null; render(); document.querySelector(`.word[data-slot="${s.slot}"][data-path="${s.path.join(".")}"]`)?.focus(); return; }
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); step(-1); return; }
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); step(1); return; }
+    if (e.key === "Escape") { state.sel = null; render(); return; }
     if (e.key === "p") { togglePin(s.slot, s.path); return; }
     if (e.key === "?") { surprise(s.slot, s.path); return; }
     if ((e.key === "Backspace" || e.key === "Delete") && partOf(locate(s.slot, state.pick[s.slot], s.path).schema, s.path[s.path.length - 1]).opt) { removeWord(s.slot, s.path); return; }
@@ -860,16 +1068,17 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && typing && state.sel) { state.sel = null; render(); return; }
   if (typing) return;
   if (state.game && [" ", "r", "+", "=", "]", "-", "["].includes(e.key)) return;
-  if (e.key === " " && !target.closest("button")) { e.preventDefault(); state.sel = null; reroll(SLOTS.map((x) => x.key)); }
+  if (e.key === " " && !target.closest("button, summary, a")) { e.preventDefault(); state.sel = null; reroll(SLOTS.map((x) => x.key)); }
   else if (e.key === "r") retell();
   else if (e.key === "k") keepBit();
   else if (e.key === "+" || e.key === "=" || e.key === "]") setLen(state.len + 1);
   else if (e.key === "-" || e.key === "[") setLen(state.len - 1);
 });
-addEventListener("resize", () => state.sel && positionPicker());
+addEventListener("resize", () => { if (state.sel) positionPicker(); placeFirstHint(); });
 
 // ---------- boot ----------
 (async function boot() {
+  initFolds();
   await loadPacks();
   cast = loadCast();
   const h = location.hash.slice(1);
@@ -884,7 +1093,7 @@ addEventListener("resize", () => state.sel && positionPicker());
     for (const sl of SLOTS) state.pick[sl.key] = randomPhrase(sl.key);
     state.seed = 1 + rand(1e9);
     ready = true;
-    queueMicrotask(async () => { await receiveSpace(kind, data); renderSpaces(); renderLibrary(); render(); $("#spaces").scrollIntoView({ behavior: "smooth", block: "start" }); });
+    queueMicrotask(async () => { await receiveSpace(kind, data); renderSpaces(); renderLibrary(); render(); reveal($("#spaces")).scrollIntoView({ behavior: "smooth", block: "start" }); });
   }
   else if (kind === "grammar") receiveGrammar(data);
   else if ((kind === "jam" || kind === "room") && ROOM_CODE.test(data.split("~")[0])) {
@@ -918,5 +1127,6 @@ addEventListener("resize", () => state.sel && positionPicker());
   renderSpaces();
   // Spaces you've joined: fetch them (only those; nothing else leaves the browser).
   if (spaces.list.length) refreshAllSpaces();
-  if (lib.incoming) $("#library").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (lib.incoming) reveal($("#library")).scrollIntoView({ behavior: "smooth", block: "start" });
+  showFirstHint();
 })();

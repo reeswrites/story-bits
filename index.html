@@ -15,10 +15,22 @@
   <main>
     <header class="masthead">
       <h1>Story Bits</h1>
-      <p class="lede">Write with a grammar, word by word. Tap any word or line to step it from plain to strange, swap in your own, or fork the grammar itself. Start with a funny story or a small poem. It's yours alone, in this browser, until you open a jam.</p>
+      <p class="lede">Write with a grammar, word by word. It's yours alone, in this browser, until you invite someone in.</p>
     </header>
 
-    <section class="controls" aria-label="Controls">
+    <div class="toolbar">
+      <button id="rules-btn" class="tool" aria-expanded="false" aria-controls="rules" data-fold-btn="rules"><span aria-hidden="true" class="caret">▸</span> Rules</button>
+      <details id="others" class="menu">
+        <summary class="tool">With others <span aria-hidden="true" class="caret">▾</span></summary>
+        <div class="menu-list" role="group" aria-label="With others">
+          <button id="live" class="menu-item" hidden>Start a jam <span class="menu-note">tune together, live</span></button>
+          <button id="challenge" class="menu-item">Pass it around <span class="menu-note">everyone makes it theirs, by link</span></button>
+          <button id="daily" class="menu-item">Today's bit <span class="menu-note">the same piece for everyone today</span></button>
+        </div>
+      </details>
+    </div>
+    <div id="rules" class="drawer" hidden>
+    <section class="controls" aria-label="Rules">
       <div class="grammar-row">
         <label class="grammar-label"><span class="dial-label">Grammar</span>
           <select id="grammar-pick" aria-label="Grammar"></select></label>
@@ -45,26 +57,36 @@
       </div>
       <p id="dial-note" class="dial-note"></p>
       <ul id="pairs" class="pairs" aria-label="Pairs in play"></ul>
+      <div class="reroll-row">
+        <span class="dial-label">Reroll one card</span>
+        <div id="legend" class="legend" role="group" aria-label="Reroll a card"></div>
+      </div>
     </section>
+    </div>
 
     <section class="page" aria-label="The story">
       <div id="room-bar" class="room-bar" hidden></div>
       <div id="game-bar" class="game-bar" hidden></div>
       <div class="page-top">
         <p class="eyebrow" id="headline-name">The bit</p>
-        <div id="legend" class="legend" role="group" aria-label="Reroll a card"></div>
       </div>
       <p id="bit" class="bit"></p>
       <div id="story" class="story"></div>
-      <p class="tip">Tap a word to tune it, or the rest of a sentence to tune that beat. ← → step plainer or stranger. Pin what you love; shuffles keep it.</p>
+      <p class="tip">Tap any word to step it from plain to strange.</p>
       <div class="actions">
         <button id="shuffle" class="primary">Shuffle <kbd>space</kbd></button>
-        <button id="retell">Retell <kbd>r</kbd></button>
-        <button id="keep">Keep this character <kbd>k</kbd></button>
-        <button id="share" class="ghost">Copy link</button>
-        <button id="challenge" class="ghost challenge-btn">Pass it around</button>
-        <button id="daily" class="ghost">Today's bit</button>
-        <button id="live" class="ghost live-btn" hidden>Start a jam</button>
+        <span class="undo-pair">
+          <button id="undo" class="icon" hidden aria-label="Undo" title="Undo (⌘Z / Ctrl+Z)"><span aria-hidden="true">↶</span></button>
+          <button id="redo" class="icon" hidden aria-label="Redo" title="Redo (⇧⌘Z / Ctrl+Shift+Z)"><span aria-hidden="true">↷</span></button>
+        </span>
+        <details class="menu more">
+          <summary class="tool">More <span aria-hidden="true" class="caret">▾</span></summary>
+          <div class="menu-list" role="group" aria-label="More">
+            <button id="retell" class="menu-item">Retell <kbd>r</kbd> <span class="menu-note">new sentences, same words</span></button>
+            <button id="keep" class="menu-item">Keep this character <kbd>k</kbd> <span class="menu-note">adds them to the cast</span></button>
+            <button id="share" class="menu-item">Copy link <span class="menu-note">this exact piece</span></button>
+          </div>
+        </details>
       </div>
       <div id="challenge-panel" class="challenge-panel" hidden>
         <p class="cp-lede">No server needed: everyone gets this exact piece by link, makes it theirs (with a move limit if you like), and sends their version back. Then you put the versions side by side. For a live session, start a jam instead.</p>
@@ -96,8 +118,9 @@
       <div id="compare-cards" class="compare-cards"></div>
     </section>
 
+    <details class="fold" data-fold="bank">
+    <summary><span class="caret" aria-hidden="true">▸</span><h2 id="bank-h">Word bank</h2><span id="bank-count" class="count"></span></summary>
     <section class="bank-wrap" aria-labelledby="bank-h">
-      <div class="bank-head"><h2 id="bank-h">Word bank</h2><span id="bank-count" class="count"></span></div>
       <p class="help">Your own words for the grammar in use. They turn up in shuffles and in the word picker, and they travel inside any link you share.</p>
       <form id="bank-form" class="bank-form" autocomplete="off">
         <label class="bf-field"><span class="dial-label">Slot</span><select id="bf-slot"></select></label>
@@ -124,9 +147,12 @@
         <p class="help">A pack link adds your words to whoever opens it. Suggesting opens a GitHub issue; accepted words join the shared bank for everyone.</p>
       </div>
     </section>
+    </details>
 
+    <details id="grammars-fold" class="fold" data-fold="grammars">
+    <summary><span class="caret" aria-hidden="true">▸</span><h2 id="gs-h">Grammars &amp; spaces</h2></summary>
     <section id="library" class="library-wrap" aria-labelledby="lib-h">
-      <div class="bank-head"><h2 id="lib-h">Grammars</h2></div>
+      <div class="bank-head"><h3 id="lib-h">Grammars</h3></div>
       <p class="help">A grammar is the rules of a piece: its cards, word lists, beat lines, what the dial clashes, and any constraints. Fork one to make it yours, share it by link, or suggest it for everyone. Yours stay in this browser.</p>
       <div id="lib-incoming" class="lib-incoming" hidden></div>
       <div id="lib-list" class="lib-list"></div>
@@ -134,22 +160,26 @@
     </section>
 
     <section id="spaces" class="spaces-wrap" aria-labelledby="sp-h">
-      <div class="bank-head"><h2 id="sp-h">Spaces</h2></div>
+      <div class="bank-head"><h3 id="sp-h">Spaces</h3></div>
       <p class="help">A space is a shared folder for a group: its grammars (every version), word packs, kept pieces, cast, lore and jam history. Jams opened in a space draw from it. Make one public to publish what's in it by a short link. Nothing goes to a space unless you put it there.</p>
       <div id="spaces-body" class="spaces-body"></div>
     </section>
+    </details>
 
-    <section class="cast-wrap" aria-labelledby="cast-h">
-      <h2 id="cast-h">The cast</h2>
+    <details class="fold cast-wrap" data-fold="cast">
+    <summary><span class="caret" aria-hidden="true">▸</span><h2 id="cast-h">The cast</h2></summary>
+    <section aria-labelledby="cast-h">
       <p class="help">People you've kept. Everything that has happened to them so far.</p>
       <div id="cast" class="cast"></div>
     </section>
+    </details>
 
     <footer>
       <p>Story Bits began with one rule for funny stories: things that happened that don't quite fit, landing somewhere it's safe to laugh. That rule is now one grammar among others. Nothing here needs an account; your grammars, words and cast stay in this browser unless you put them in a space.</p>
     </footer>
   </main>
-  <div id="picker" class="picker" role="dialog" aria-label="Tune a word" hidden></div>
+  <div id="picker" class="picker" role="dialog" aria-labelledby="pk-title" tabindex="-1" hidden></div>
+  <div id="first-hint" class="first-hint" role="note" hidden><span>Tap any word to tune it</span><button class="fh-x" aria-label="Dismiss hint">✕</button></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="data.js"></script>

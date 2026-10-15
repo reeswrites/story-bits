@@ -338,7 +338,7 @@ function renderRoomBar() {
         ${done.length ? `<details><summary>Resolved</summary>${done.map((c) => noteHtml(c, true)).join("")}</details>` : ""}</div>
       </details>`;
   } else if (d.phase === "lobby") body = isRoomHost()
-    ? `<p class="rb-phase">Workshop: set up a piece with the controls above, then start a round. Everyone gets the same start, tunes their own copy, and the copies come back for critique.</p>
+    ? `<p class="rb-phase">Workshop: set up a piece (Rules, above, holds the grammar, form, length and dial), then start a round. Everyone gets the same start, tunes their own copy, and the copies come back for critique.</p>
        <div class="cp-row">
          <label class="bf-field"><span class="dial-label">Move limit</span><select id="rb-moves">${[0, 1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === d.rules.moves ? "selected" : ""}>${n ? `${n} move${n === 1 ? "" : "s"}` : "no limit"}</option>`).join("")}</select></label>
          <label class="lib-check"><input type="checkbox" id="rb-claps" ${d.rules.claps ? "checked" : ""}> Claps (a winner)</label>

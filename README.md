@@ -8,6 +8,20 @@ Live: https://reeswrites.com/story-bits/ · Design notes: [docs/design.md](docs/
 
 Story Bits began with one rule for funny stories, from a note: *something happened to someone, and they feel some way about it*, and a funny story is an incongruity that lands somewhere it's safe to laugh. That rule is now one grammar. Poems are another. Make your own.
 
+## The page
+
+It opens calm: the piece, one hint (*tap any word*), and **Shuffle**. The first time, a hint points at a word. Everything else is one step away:
+
+- **Rules** (above the piece) holds the grammar, form, length, the dial, the pairs it clashes, and *Reroll one card*.
+- **With others** has *Start a jam*, *Pass it around* and *Today's bit*.
+- **More** (next to Shuffle) has *Retell*, *Keep this character* and *Copy link*.
+- **↶ ↷** undo and redo appear once there's something to undo (also **⌘Z** / **Ctrl+Z**, **⇧⌘Z** / **Ctrl+Shift+Z**). Undo covers words, lines, form, length, the dial and the grammar. In a together jam an undo goes out like any other edit and only puts back what you changed; in a challenge it counts like putting a change back.
+- **Word bank**, **Grammars & spaces** and **The cast** fold away below the piece.
+
+Which of these are open is remembered in this browser. In a jam or a challenge, its bar stays on the page.
+
+**Keyboard and screen readers**: words are buttons named for what they are (*landlord, Who: person*); each sentence has a tune button that shows when focused. The picker is a dialog: focus moves into it, ← → step, Escape closes it and returns focus to the word; on a phone it's a modal sheet and Tab stays inside it. Small text holds 6:1 contrast or better; nothing is faded unless it's done (a resolved comment), and unavailable buttons are outlined dashed rather than greyed.
+
 ## Writing alone
 
 - **Tap any word** to open it: **‹ ›** (or ← →) step it plain → strange, live; the full list grouped by register; *Surprise me*, *Pin* (shuffles keep it), *Remove*; or type your own.
@@ -45,7 +59,7 @@ The grammar makes pieces well-formed. Whether one works is up to the dial, the w
 
 ### The library
 
-Under **Grammars** on the page: **Fork** any grammar into your library, **Edit** your copy (basics, words per slot, beat lines, constraints, the dial, the landing rule, or the whole thing as JSON; every edit is checked before it saves), **Copy link** to share it (the link offers it to whoever opens it, never adds it silently), or **Suggest** it for everyone.
+Under **Grammars & spaces** on the page: **Fork** any grammar into your library, **Edit** your copy (basics, words per slot, beat lines, constraints, the dial, the landing rule, or the whole thing as JSON; every edit is checked before it saves), **Copy link** to share it (the link offers it to whoever opens it, never adds it silently), or **Suggest** it for everyone.
 
 ## Jams
 
@@ -59,7 +73,7 @@ Open one with **Start a jam**. A jam is a shared session on the room server; eve
 
 ## Spaces
 
-A **space** is a shared folder for a group, kept until you delete it: its grammars, word packs, kept pieces, cast, **lore** (kept phrases), comments and jam history. Create one under **Spaces**; invite people with its edit, comment or view link, like a jam.
+A **space** is a shared folder for a group, kept until you delete it: its grammars, word packs, kept pieces, cast, **lore** (kept phrases), comments and jam history. Create one under **Grammars & spaces**; invite people with its edit, comment or view link, like a jam.
 
 - **Grammars are versions.** Publishing an edit adds version *n + 1*; nothing is overwritten, and a piece kept with version 1 still opens in version 1 (*Open in v3* moves it, if its words still fit). Publishing from an old version, after someone else published, is refused rather than silently merged.
 - **Side by side**: the Grammars list shows this browser's grammars next to each space's. *Fork to mine* copies one into your library; *Publish ↑* sends one of yours to a space (as the next version of what you forked, or as a new grammar).
@@ -73,7 +87,7 @@ Your spaces and their keys are listed in this browser only. Every client checks 
 
 ## What's stored
 
-- **In your browser** (localStorage): your grammars, word bank, cast, nickname, and the list of spaces you've joined with their invite keys. Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
+- **In your browser** (localStorage): your grammars, word bank, cast, nickname, the list of spaces you've joined with their invite keys, and which sections are open (and whether you've seen the first-run hint). Nothing else, and nothing leaves unless you share a link, open a jam, or put something in a space.
 - **In a jam** (its own storage on Cloudflare): the shared piece, comments (with nicknames), finished workshop rounds (the start, each copy, notes, claps; up to 50), and, if it's in a space, that space's id and name and a copy of its grammars, lore and cast. How long it's kept is the host's call: a month or a year after it's last used, or until the host deletes it (a year by default). The host can wipe its history and comments, or delete the whole jam, any time.
 - **In a space** (its own storage on Cloudflare): its name and keys, grammars (every version), word packs, kept pieces, cast, lore, comments (with nicknames), and a summary of each linked jam's rounds (names and winners). Up to 6 MB. How long it's kept is the owner's call: **until they delete it** (the default), or a year or a month after it's last used; choosing a time asks first, and the space shows the date it would go, highlighted near the end. The owner can delete it any time, and export it first.
 

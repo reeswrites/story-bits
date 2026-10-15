@@ -268,7 +268,8 @@ function tokHtml(toks, slot, capFirst) {
     if (state.view) return `<span class="w${viewChanged(`${slot}|${p}`) ? " changed" : ""}">${esc(s)}</span>`;
     const pinned = state.pins.includes(`${slot}|${p}`);
     const sel = state.sel && state.sel.slot === slot && same(state.sel.path, t.path);
-    return `<button class="word${pinned ? " pinned" : ""}${sel ? " sel" : ""}" data-slot="${slot}" data-path="${p}" aria-label="${esc(s)}: tune the ${t.part.name}${pinned ? " (pinned)" : ""}">${esc(s)}</button>`;
+    const card = SLOTS.find((c) => c.key === slot)?.label || slot;
+    return `<button class="word${pinned ? " pinned" : ""}${sel ? " sel" : ""}" data-slot="${slot}" data-path="${p}" aria-haspopup="dialog" aria-expanded="${sel}" aria-label="${esc(s)}, ${esc(card)}: ${esc(t.part.name)}${pinned ? ", pinned" : ""}">${esc(s)}</button>`;
   }).join(" ");
 }
 const phraseHtml = (slot, capFirst = false) =>
@@ -357,7 +358,11 @@ function story(ctx) {
     const line = beatLines(key, ctx)[choice[key]];
     if (state.view) return `<span class="beat-s${viewChanged(`beat|${key}`) ? " changed" : ""}">${fill(line.t, ctx)}</span>`;
     const pinned = state.pins.includes(`beat|${key}`);
-    return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}" tabindex="0" role="button" aria-label="Tune ${esc(beatGroup(key).name)}">${fill(line.t, ctx)}</span>`;
+    // The sentence holds word buttons, so it can't be a button itself. Tapping its plain text
+    // opens it; for keyboards and screen readers, a small button does (shown on focus).
+    const said = fillText(line.t, ctx);
+    const btn = `<button class="beat-btn" data-beat-btn="${key}" aria-haspopup="dialog" aria-expanded="${sel === key}" aria-label="Tune the sentence (${esc(beatGroup(key).name)}): ${esc(said.length > 90 ? said.slice(0, 88) + "…" : said)}${pinned ? ", pinned" : ""}">¶</button>`;
+    return `<span class="beat${sel === key ? " sel" : ""}${pinned ? " pinned" : ""}" data-beat="${key}">${btn}${fill(line.t, ctx)}</span>`;
   }).join(form().lines ? "<br>" : " "));
 }
 
