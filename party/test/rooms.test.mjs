@@ -4,7 +4,7 @@
 //
 // Covers: roles from invite keys; together mode (whole piece, patches, presence, view-only is
 // refused); comments; workshop (start, hidden copies, critique notes, claps with cap and no
-// self-claps, rules, stored round); host handoff; forget; origin check.
+// self-claps, rules, stored round); host handoff; forget; retention; delete; origin check.
 import assert from "node:assert/strict";
 
 const HOST = process.env.ROOMS_HOST || "localhost:8799";
@@ -21,6 +21,7 @@ function player(pid, key = "", origin = "http://localhost:4290") {
     if (m.t === "doc") { p.doc = m.doc; p.rev = m.rev; }
     if (m.t === "patch") { for (const [k, v] of Object.entries(m.set)) { const [a, b] = k.split("."); if (b) (p.doc[a] ||= {})[b] = v; else p.doc[a] = v; } p.rev = m.rev; }
     if (m.t === "presence") p.presence = m.list;
+    if (m.t === "deleted") p.deleted = true;
     p.waiters = p.waiters.filter((w) => !w(m));
   });
   p.open = new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", rej); });
@@ -108,9 +109,23 @@ await b.until((p) => p.last.host === b.pid, 15000);
 b.send({ t: "forget" });
 await c.until((p) => p.last.stored === 0 && p.last.comments.length === 0);
 
+// Retention is the host's call; a non-host can't change it. Then the host deletes the jam.
+assert.equal(c.last.retain, "1y", "kept a year by default");
+c.send({ t: "retain", value: "30d" });
+b.send({ t: "retain", value: "keep" });
+await c.until((p) => p.last.retain === "keep");
+b.send({ t: "retain", value: "forever-and-ever" });
+await new Promise((r) => setTimeout(r, 300));
+assert.equal(c.last.retain, "keep", "only known retention values");
+c.send({ t: "delete" }); // not host: ignored
+await new Promise((r) => setTimeout(r, 300));
+assert.ok(!c.deleted);
+b.send({ t: "delete" });
+await c.until((p) => p.deleted);
+
 // Origin check.
 const evil = player("player-eeee-5", "", "https://example.com");
 await assert.rejects(evil.open, "foreign origin is refused");
 
 for (const p of [b, c, v]) p.ws.close();
-console.log(`ok: jam ${code}: roles, together (doc, patches, guards, presence), comments, workshop (rules, hidden copies, notes, claps), history, host handoff, forget, origin check`);
+console.log(`ok: jam ${code}: roles, together (doc, patches, guards, presence), comments, workshop (rules, hidden copies, notes, claps), history, host handoff, forget, retention, delete, origin check`);

@@ -18,8 +18,9 @@
 //
 // What's stored, in this object's storage, in the owner's Cloudflare account: the shared piece,
 // comments (with nicknames), finished workshop rounds (up to MAX_ROUNDS: the start, each copy,
-// its claps and notes). No accounts, emails or IPs. A jam with no activity for EXPIRE_MS deletes
-// itself, and the host can wipe its history and comments at any time ("forget").
+// its claps and notes). No accounts, emails or IPs. How long a jam is kept is the host's call
+// (RETAIN: a month or a year after the last activity, or until the host deletes it; a year by
+// default). The host can wipe its history and comments ("forget") or delete it outright, any time.
 
 import { Server, routePartykitRequest } from "partyserver";
 
@@ -30,7 +31,9 @@ const MAX_STORY = 240 * 1024;
 const MAX_ROUNDS = 50;
 const MAX_COMMENTS = 400;
 const CLAPS_EACH = 5;
-const EXPIRE_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
+// Retention, set by the host: kept this long after the last activity, or (keep) until deleted.
+const RETAIN = { "30d": 30 * DAY, "1y": 365 * DAY, keep: null };
 const ROLE_RANK = { view: 0, comment: 1, edit: 2 };
 // Top-level fields of a piece a patch may set, and which of them take a sub-key (p.who, b.turn).
 const PATCH_TOP = new Set(["v", "g", "gx", "f", "d", "s", "l", "b", "p"]);
@@ -44,6 +47,7 @@ const fresh = () => ({
   mode: "together", owner: null, host: null, keys: null,
   doc: null, rev: 0, comments: [], seq: 0,
   rules: { moves: 3, claps: true },
+  retain: "1y",
   phase: "lobby", round: 0, challenge: null, players: {}, entries: {}, claps: {},
 });
 
@@ -95,7 +99,7 @@ export class StoryRoom extends Server {
       you: { pid: conn.state?.pid || null, role },
       room: {
         code: this.name, mode: r.mode, host: r.host, owner: r.owner, rev: r.rev,
-        rules: r.rules, clapsEach: CLAPS_EACH,
+        rules: r.rules, clapsEach: CLAPS_EACH, retain: r.retain,
         // Invite keys only for editors: they can bring people in.
         keys: role === "edit" ? r.keys : null,
         phase: r.phase, round: r.round, challenge: r.challenge,
@@ -123,7 +127,9 @@ export class StoryRoom extends Server {
 
   async save(withState = true) {
     await this.ctx.storage.put("room", this.room);
-    await this.ctx.storage.setAlarm(Date.now() + EXPIRE_MS);
+    const ms = RETAIN[this.room.retain] ?? RETAIN["1y"];
+    if (ms) await this.ctx.storage.setAlarm(Date.now() + ms);
+    else await this.ctx.storage.deleteAlarm();
     if (withState) this.broadcastState();
   }
 
@@ -315,6 +321,18 @@ export class StoryRoom extends Server {
         if (!isHost) return;
         Object.assign(r, { phase: "lobby", challenge: null, entries: {}, claps: {} });
         return this.save();
+      case "retain": // host: how long the jam is kept
+        if (!isHost || !(m.value in RETAIN)) return;
+        r.retain = m.value;
+        return this.save();
+      case "delete": { // host: delete the jam and everything in it, now
+        if (!isHost) return;
+        await this.ctx.storage.deleteAll();
+        this.room = fresh();
+        this.rounds = [];
+        for (const c of this.conns()) { c.send(JSON.stringify({ t: "deleted" })); c.close(1000, "deleted"); }
+        return;
+      }
       case "forget": // host: wipe stored rounds and comments
         if (!isHost) return;
         this.rounds = [];

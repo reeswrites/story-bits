@@ -74,6 +74,7 @@ function connectRoom() {
     }
     else if (m.t === "presence" && Array.isArray(m.list)) { room.presence = m.list; paintPeers(); renderRoomBar(); }
     else if (m.t === "error") toast(String(m.error || "The jam said no."));
+    else if (m.t === "deleted") { leaveRoom(); toast("The host deleted this jam."); }
   });
   ws.addEventListener("close", () => {
     if (state.room !== room) return;
@@ -343,8 +344,14 @@ function renderRoomBar() {
     <ul class="rb-players">${players}</ul>
     ${body}
     ${history}
-    ${isRoomHost() && d && (d.stored || d.comments.length) ? `<p><button id="rb-forget" class="ghost subtle">Forget this jam's history and comments</button></p>` : ""}
-    <p class="rb-fine">This jam keeps its piece, comments and finished rounds (nicknames only) so you can come back. It deletes itself after 30 days with no activity; the host can wipe it sooner.</p>`;
+    ${isRoomHost() && d ? `<div class="rb-keep">
+      <label class="bf-field"><span class="dial-label">Keep this jam</span><select id="rb-retain">
+        ${[["30d", "for a month after it's last used"], ["1y", "for a year after it's last used"], ["keep", "until I delete it"]].map(([v, t]) => `<option value="${v}" ${d.retain === v ? "selected" : ""}>${t}</option>`).join("")}
+      </select></label>
+      ${d.stored || d.comments.length ? `<button id="rb-forget" class="ghost subtle">Forget history and comments</button>` : ""}
+      <button id="rb-delete" class="ghost subtle">Delete this jam</button>
+    </div>` : ""}
+    <p class="rb-fine">This jam keeps its piece, comments and finished rounds (nicknames only) so you can come back. ${d ? ({ "30d": "It's kept for a month after it's last used", "1y": "It's kept for a year after it's last used", keep: "It's kept until the host deletes it" })[d.retain] || "It's kept for a year after it's last used" : "How long it's kept is the host's call"}; the host can wipe or delete it any time.</p>`;
   document.body.classList.toggle("room-host", isRoomHost());
   document.body.classList.toggle("room-lobby", d?.phase === "lobby" && d?.mode === "workshop");
 }
@@ -368,6 +375,7 @@ document.addEventListener("click", (e) => {
   else if (t.id === "rb-vote") roomSend({ t: "vote" });
   else if (t.id === "rb-end") roomSend({ t: "end" });
   else if (t.id === "rb-lobby") roomSend({ t: "lobby" });
+  else if (t.id === "rb-delete") { if (confirm("Delete this jam for everyone: the piece, comments and history? This can't be undone.")) roomSend({ t: "delete" }); }
   else if (t.id === "rb-forget") { if (confirm("Forget every stored round and comment in this jam? This can't be undone.")) roomSend({ t: "forget" }); }
   else if (t.id === "gb-send") { roomSend({ t: "submit", me: fixedSnapshot() }); toast("Sent to the jam."); }
   else if (d.jcResolve) roomSend({ t: "resolve", id: d.jcResolve, done: !!d.done });
@@ -389,6 +397,7 @@ document.addEventListener("change", (e) => {
   const el = e.target;
   if (!(el instanceof Element) || !state.room) return;
   if (el.name === "rb-mode") roomSend({ t: "mode", mode: el.value });
+  else if (el.id === "rb-retain") roomSend({ t: "retain", value: el.value });
   else if (el.id === "rb-moves" || el.id === "rb-claps") roomSend({ t: "rules", moves: +$("#rb-moves").value, claps: $("#rb-claps").checked });
 });
 let nameTimer;

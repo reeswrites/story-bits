@@ -68,7 +68,8 @@ claps, and every client checks what it receives with the same parsers it uses fo
 
 In your browser: grammars you've added, your word bank, your cast. In a jam: the room's piece,
 grammar, comments and rounds, in that room's storage in our Cloudflare account; nicknames only; a
-room deletes itself after 30 days without activity; the host can wipe it sooner.
+room is kept as long as its host chooses (a month or a year after last use, or until deleted; a year
+by default), and the host can wipe or delete it any time. Retention is a setting, not a limit.
 
 ## Status (2026-10-15)
 

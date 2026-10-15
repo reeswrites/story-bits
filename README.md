@@ -59,7 +59,7 @@ Open one with **Start a jam**. A jam is a shared session on the room server; eve
 
 ### What a jam stores
 
-In the jam's own storage on Cloudflare: the shared piece, comments (with nicknames), and finished workshop rounds (the start, each copy, notes, claps; up to 50). No accounts, emails or IPs. A jam deletes itself after 30 days without activity, and the host can wipe its history and comments. Only allowed pages can connect.
+In the jam's own storage on Cloudflare: the shared piece, comments (with nicknames), and finished workshop rounds (the start, each copy, notes, claps; up to 50). No accounts, emails or IPs. How long it's kept is the host's call: a month or a year after it's last used, or until the host deletes it (a year by default). The host can wipe its history and comments, or delete the whole jam, any time. Only allowed pages can connect.
 
 ## Growing the shared bank
 

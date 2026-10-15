@@ -489,3 +489,5 @@ body.verse .bit { font-weight: 500; font-style: italic; }
 /* Commenters and viewers in a together jam: read and comment, don't tune. */
 body.jam-readonly .controls, body.jam-readonly .legend, body.jam-readonly #shuffle, body.jam-readonly #retell, body.jam-readonly .ghost-slot { display: none !important; }
 .picker.readonly .pk-step, .picker.readonly .pk-keys, .picker.readonly .pk-actions, .picker.readonly .pk-list, .picker.readonly .pk-own { display: none; }
+.rb-keep { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 12px; }
+.rb-keep button { font: 500 13px "IBM Plex Mono", monospace; padding: 8px 12px; border-radius: 6px; border: 1.5px solid var(--rule); background: var(--card); color: var(--ink-2); cursor: pointer; min-height: 38px; }
