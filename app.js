@@ -723,6 +723,7 @@ function loadSnapshot(x) {
   return !!snap;
 }
 function toHash() {
+  if (state.room) return `#room=${state.room.code}`;
   // Mid-challenge, the link holds the challenge and your copy, so a reload picks up where you were.
   if (state.game) return "#p=" + b64(JSON.stringify(playPayload()));
   // Comparing (and not playing): keep the set of versions in the link.
@@ -877,12 +878,15 @@ function renderGameBar() {
         Make it yours in <b>${c.n}</b> move${c.n === 1 ? "" : "s"}. Any word or beat you change is a move; put it back to get the move back.</p>
       <div class="gb-moves" aria-label="${used} of ${c.n} moves used">${Array.from({ length: c.n }, (_, i) => `<span class="${i < used ? "on" : ""}"></span>`).join("")}<b>${used}/${c.n}</b></div>
     </div>
-    <div class="gb-row">
+    ${state.room ? `<div class="gb-row">
+      <button id="gb-send" class="primary">${roomMe()?.submitted ? "Update my version" : "Send my version"}</button>
+      <span class="gb-note">${roomMe()?.submitted ? "Sent. You can keep tuning and send again until the host reveals." : "Everyone's copies stay hidden until the host reveals them."}</span>
+    </div>` : `<div class="gb-row">
       <label class="gb-name"><span class="dial-label">Your name</span><input id="gb-name" maxlength="${NAME_MAX}" value="${esc(name)}" placeholder="so they know it's you"></label>
       <button id="gb-submit" class="primary">Copy my version</button>
       <button id="gb-compare" class="ghost">Compare versions</button>
       <button id="gb-leave" class="ghost subtle">Leave challenge</button>
-    </div>`;
+    </div>`}`;
 }
 
 // ----- compare -----
@@ -945,6 +949,7 @@ function renderCompare() {
   const cmp = state.compare;
   if (!cmp) return;
   if (!state.game) history.replaceState(null, "", toHash());
+  document.body.classList.toggle("room-compare", !!state.room);
   const top = Math.max(0, ...cmp.entries.map((e) => e.votes));
   const original = `<article class="version original"><header><h3>The original</h3><span class="count">${esc(cmp.c.d ? `today's bit · ${cmp.c.h}` : cmp.c.h ? `from ${cmp.c.h}` : "start")}</span></header>${staticHtml(cmp.c.s, [])}</article>`;
   el.innerHTML = original + cmp.entries.map((e, i) => {
@@ -952,7 +957,7 @@ function renderCompare() {
     return `<article class="version${top > 0 && e.votes === top ? " leading" : ""}">
       <header><h3>${esc(e.name || `Player ${i + 1}`)}</h3><span class="count">${ch.length} move${ch.length === 1 ? "" : "s"}</span></header>
       ${staticHtml(e.me, ch)}
-      <div class="vote"><button class="clap" data-clap="${i}" aria-label="Clap for ${esc(e.name || `player ${i + 1}`)}">👏 <b>${e.votes}</b></button>${top > 0 && e.votes === top ? `<span class="crown">leading</span>` : ""}</div>
+      <div class="vote"><button class="clap" data-clap="${i}" aria-label="Clap for ${esc(e.name || `player ${i + 1}`)}" ${clapDisabled(e) ? "disabled" : ""}>👏 <b>${e.votes}</b></button>${top > 0 && e.votes === top ? `<span class="crown">${state.room?.data?.phase === "results" ? "winner" : "leading"}</span>` : ""}${state.room && e.id === playerId() ? `<span class="crown mine">yours</span>` : ""}</div>
     </article>`;
   }).join("");
   $("#compare-empty").hidden = cmp.entries.length > 0;
@@ -961,6 +966,148 @@ function compareLink() {
   const cmp = state.compare;
   return linkTo("cmp", { c: cmp.c, e: cmp.entries.map((e) => ({ name: e.name, me: e.me })) });
 }
+
+
+// ---------- live rooms ----------
+// A room runs the same game live: one host, everyone on their own phone, copies hidden until
+// the reveal, claps counted by the room server (party/ in this repo: partyserver on Cloudflare).
+// Rounds are stored in the room for history. The room server's host: localhost in development;
+// set ROOMS_PROD to the deployed worker's host to turn rooms on for the live site.
+const ROOMS_PROD = "story-bits-rooms.peregrine-rd.workers.dev";
+const ROOMS_HOST = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? `${location.hostname}:8799` : ROOMS_PROD;
+const ROOM_CODE = /^[A-Z0-9]{4,8}$/;
+const ROOM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const newRoomCode = () => Array.from({ length: 5 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join("");
+
+// One id per tab (so two tabs on one laptop are two players), kept across reloads.
+function playerId() {
+  try {
+    let id = sessionStorage.getItem("story-bits-player");
+    if (!id) { id = "p-" + crypto.randomUUID(); sessionStorage.setItem("story-bits-player", id); }
+    return id;
+  } catch { return (window.__pid ||= "p-" + crypto.randomUUID()); }
+}
+const NAME_KEY = "story-bits-name";
+const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; } };
+const roomMe = () => state.room?.data?.players.find((p) => p.id === playerId());
+const isRoomHost = () => !!state.room?.data && state.room.data.host === playerId();
+const roomSend = (m) => { const ws = state.room?.ws; if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+function clapDisabled(e) {
+  if (!state.room) return false;
+  const d = state.room.data;
+  return d?.phase !== "vote" || e.id === playerId() || (roomMe()?.clapsLeft ?? 0) <= 0;
+}
+
+function openRoom(code) {
+  if (!ROOMS_HOST || !ROOM_CODE.test(code)) return;
+  if (state.room) leaveRoom(true);
+  state.room = { code, ws: null, data: null, tries: 0, phase: null, round: 0 };
+  document.body.classList.add("in-room");
+  connectRoom();
+  renderRoomBar();
+  history.replaceState(null, "", toHash());
+}
+function connectRoom() {
+  const room = state.room;
+  if (!room) return;
+  const proto = /^(localhost|127\.0\.0\.1)/.test(ROOMS_HOST) ? "ws" : "wss";
+  const ws = new WebSocket(`${proto}://${ROOMS_HOST}/parties/story-room/${room.code}`);
+  room.ws = ws;
+  ws.addEventListener("open", () => { room.tries = 0; ws.send(JSON.stringify({ t: "hello", pid: playerId(), name: savedName() })); renderRoomBar(); });
+  ws.addEventListener("message", (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m.t === "state" && m.room && typeof m.room === "object") syncRoom(m.room);
+    else if (m.t === "error") toast(String(m.error || "The room said no."));
+  });
+  ws.addEventListener("close", () => {
+    if (state.room !== room) return;
+    room.ws = null;
+    renderRoomBar();
+    // Reconnect with backoff; the room keeps your copy and claps.
+    setTimeout(() => state.room === room && connectRoom(), Math.min(8000, 500 * 2 ** room.tries++));
+  });
+}
+function leaveRoom(quiet) {
+  const room = state.room;
+  if (!room) return;
+  state.room = null;
+  room.ws?.close();
+  document.body.classList.remove("in-room", "room-compare");
+  if (state.game) leaveGame();
+  state.compare = null;
+  $("#compare").hidden = true;
+  $("#room-bar").hidden = true;
+  if (!quiet) render();
+}
+
+// The server's view of the room arrives on every change. Bring the page in line with its phase.
+function syncRoom(d) {
+  const room = state.room;
+  room.data = d;
+  const c = d.challenge && parseChallenge(d.challenge);
+  const fresh = room.phase !== d.phase || room.round !== d.round;
+  room.phase = d.phase;
+  room.round = d.round;
+  if (d.phase === "play" && c) {
+    if (!state.game || challengeId(state.game.c) !== challengeId(c)) startGame(c, undefined, savedName());
+    if (state.compare) { state.compare = null; $("#compare").hidden = true; }
+  } else {
+    if (state.game) leaveGame();
+  }
+  if ((d.phase === "vote" || d.phase === "results") && c) {
+    const entries = (d.entries || []).map((e) => {
+      const cp = parseCopy({ c: d.challenge, me: e.me, name: e.name });
+      return cp && { id: e.id, name: cp.name, me: cp.me, votes: Number(e.claps) || 0 };
+    }).filter(Boolean);
+    state.compare = { c, entries };
+    $("#compare").hidden = false;
+    renderCompare();
+    if (fresh) $("#compare").scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (state.compare) { state.compare = null; $("#compare").hidden = true; }
+  renderRoomBar();
+  render();
+}
+
+function renderRoomBar() {
+  const bar = $("#room-bar");
+  const room = state.room;
+  if (!room) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const d = room.data;
+  const me = roomMe();
+  const host = d?.players.find((p) => p.id === d.host);
+  const players = (d?.players || []).map((p) => `<li class="${p.online ? "" : "away"}">${p.id === d.host ? `<span title="host">★</span> ` : ""}${esc(p.name || "someone")}${p.id === playerId() ? " (you)" : ""}${d.phase === "play" && p.submitted ? ` <span class="ok">sent</span>` : ""}${d.phase === "vote" ? ` <span class="claps">${p.clapsLeft} 👏 left</span>` : ""}</li>`).join("");
+  const sent = (d?.players || []).filter((p) => p.submitted).length;
+  let phase = "";
+  if (!d) phase = `<p class="rb-phase">${room.ws ? "Joining…" : "Connecting…"}</p>`;
+  else if (d.phase === "lobby") phase = isRoomHost()
+    ? `<p class="rb-phase">You're the host. Set up a story with the controls above (form, length, dial) and by tuning any word, then start a round. Everyone gets the same start and the same number of moves.</p>
+       <div class="cp-row"><fieldset class="bf-field"><legend class="dial-label">Moves each</legend><span class="seg">${[1, 2, 3, 4, 5].map((n) => `<label><input type="radio" name="rb-n" value="${n}" ${n === 3 ? "checked" : ""}>${n}</label>`).join("")}</span></fieldset>
+       <button id="rb-start" class="primary">Start with this story</button><button id="rb-daily" class="ghost">Start with today's bit</button></div>`
+    : `<p class="rb-phase">Waiting for ${esc(host?.name || "the host")} to start a round.</p>`;
+  else if (d.phase === "play") phase = `<p class="rb-phase">Round ${d.round}: tune your copy below, then send it. ${sent} of ${d.players.filter((p) => p.online).length} sent.</p>${isRoomHost() ? `<div class="cp-row"><button id="rb-vote" class="primary" ${sent ? "" : "disabled"}>Reveal and vote</button></div>` : ""}`;
+  else if (d.phase === "vote") phase = `<p class="rb-phase">Clap for your favorites: ${me?.clapsLeft ?? 0} of ${d.clapsEach} claps left. Not for your own.</p>${isRoomHost() ? `<div class="cp-row"><button id="rb-end" class="primary">Show results</button></div>` : ""}`;
+  else if (d.phase === "results") {
+    const best = Math.max(0, ...d.entries.map((e) => e.claps));
+    const winners = d.entries.filter((e) => best && e.claps === best).map((e) => e.name || "someone");
+    phase = `<p class="rb-phase">${winners.length ? `<b>${esc(winners.join(" & "))}</b> took round ${d.round} with ${best} 👏.` : `Round ${d.round} is done.`} Saved to the room's history.</p>${isRoomHost() ? `<div class="cp-row"><button id="rb-lobby" class="primary">Next round</button></div>` : ""}`;
+  }
+  const history = d?.history?.length ? `<details class="rb-history"><summary>${d.stored} stored round${d.stored === 1 ? "" : "s"}</summary><ol>${d.history.map((h) => `<li>Round ${h.round}: ${h.top.length ? esc(h.top.join(" & ")) : "no claps"}</li>`).join("")}</ol>${isRoomHost() ? `<button id="rb-forget" class="ghost subtle">Forget this room's history</button>` : ""}</details>` : "";
+  bar.innerHTML = `
+    <div class="rb-top">
+      <div><span class="eyebrow">Live room</span><span class="rb-code">${esc(room.code)}</span>${room.ws ? "" : ` <span class="rb-off">reconnecting…</span>`}</div>
+      <div class="rb-actions"><button id="rb-invite" class="ghost">Copy invite link</button><button id="rb-leave" class="ghost subtle">Leave room</button></div>
+    </div>
+    <label class="gb-name rb-name"><span class="dial-label">Your name</span><input id="rb-name" maxlength="${NAME_MAX}" value="${esc(me?.name ?? savedName())}" placeholder="so they know it's you"></label>
+    <ul class="rb-players">${players}</ul>
+    ${phase}
+    ${history}
+    <p class="rb-fine">The room keeps each round (nicknames, versions, claps) so you have a history. It deletes itself after 30 days with no activity; the host can forget it sooner.</p>`;
+  document.body.classList.toggle("room-host", isRoomHost());
+  document.body.classList.toggle("room-lobby", d?.phase === "lobby");
+}
+const roomInvite = () => `${location.origin}${location.pathname}#room=${state.room.code}`;
 
 // ---------- render ----------
 const $ = (s) => document.querySelector(s);
@@ -1211,7 +1358,24 @@ document.addEventListener("click", (e) => {
   else if (t.id === "cmp-copy") copy(compareLink(), "Compare link copied. Everyone who opens it sees all the versions.");
   else if (t.id === "cmp-play") startGame(state.compare.c, undefined, "");
   else if (t.id === "cmp-close") { state.compare = null; $("#compare").hidden = true; render(); }
-  else if (t.dataset.clap !== undefined) { state.compare.entries[+t.dataset.clap].votes++; renderCompare(); }
+  else if (t.dataset.clap !== undefined) {
+    const e = state.compare.entries[+t.dataset.clap];
+    if (state.room) roomSend({ t: "clap", to: e.id });
+    else { e.votes++; renderCompare(); }
+  }
+  else if (t.id === "live") openRoom(newRoomCode());
+  else if (t.id === "rb-invite") copy(roomInvite(), `Invite copied. Room ${state.room.code}: anyone with the link can join.`);
+  else if (t.id === "rb-leave") leaveRoom();
+  else if (t.id === "rb-start" || t.id === "rb-daily") {
+    const n = +(document.querySelector('[name="rb-n"]:checked')?.value || 3);
+    const c = t.id === "rb-daily" ? dailyChallenge() : { h: roomMe()?.name || "", n, s: fixedSnapshot() };
+    roomSend({ t: "start", c });
+  }
+  else if (t.id === "rb-vote") roomSend({ t: "vote" });
+  else if (t.id === "rb-end") roomSend({ t: "end" });
+  else if (t.id === "rb-lobby") roomSend({ t: "lobby" });
+  else if (t.id === "rb-forget") { if (confirm("Forget every stored round in this room? This can't be undone.")) roomSend({ t: "forget" }); }
+  else if (t.id === "gb-send") { roomSend({ t: "submit", me: fixedSnapshot() }); toast("Sent to the room."); }
   else if (t.id === "share") copy(location.href, "Link copied. Same words, same story.");
   else if (t.id === "bank-share") copy(packLink(), "Pack link copied. Whoever opens it gets your words in their bank.");
   else if (t.id === "bank-suggest") {
@@ -1238,7 +1402,15 @@ document.addEventListener("submit", (e) => {
     render();
   }
 });
+let nameTimer;
 document.addEventListener("input", (e) => {
+  if (e.target instanceof Element && e.target.id === "rb-name" && state.room) {
+    const n = cleanName(e.target.value);
+    try { localStorage.setItem(NAME_KEY, n); } catch {}
+    clearTimeout(nameTimer);
+    nameTimer = setTimeout(() => roomSend({ t: "name", name: n }), 300);
+    return;
+  }
   if (e.target instanceof Element && e.target.id === "gb-name" && state.game) {
     state.game.name = cleanName(e.target.value);
     history.replaceState(null, "", toHash());
@@ -1301,6 +1473,13 @@ addEventListener("resize", () => state.sel && positionPicker());
   const read = () => { try { return JSON.parse(unb64(data)); } catch { return null; } };
   let ready = false;
   if (kind === "pack") importPack(data);
+  else if (kind === "room" && ROOM_CODE.test(data)) {
+    // Start with a fresh story under the room; the room takes over once connected.
+    for (const sl of SLOTS) state.pick[sl.key] = randomPhrase(sl.key);
+    state.seed = 1 + rand(1e9);
+    ready = true;
+    queueMicrotask(() => openRoom(data));
+  }
   else if (h === "daily") { const c = parseChallenge(dailyChallenge()); if (c) { startGame(c); ready = true; } }
   else if (kind === "c") { const c = parseChallenge(read()); if (c) { startGame(c); ready = true; } }
   else if (kind === "p") { const cp = parseCopy(read()); if (cp) { startGame(cp.c, cp.me, cp.name); ready = true; } }
@@ -1315,6 +1494,7 @@ addEventListener("resize", () => state.sel && positionPicker());
     // Settle the pairs under the dial before the first render.
     for (const s of SLOTS.slice(1)) pickFrom(s.key, Array.from({ length: 300 }, () => randomPhrase(s.key)));
   }
+  $("#live").hidden = !ROOMS_HOST;
   renderBankForm();
   renderBank();
   render();

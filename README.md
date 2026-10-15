@@ -22,6 +22,7 @@ Live: https://reeswrites.com/story-bits/
 - **Forms.** The same bit can be told as *The bit*, *Local news*, *Wedding toast* or *Complaint to the manager*. Each form has its own beats and lengths, and every form lands: `checkForm` in `grammar.js` rejects any stanza whose last paragraph has no landing beat.
 - **Today's bit.** One story per day (UTC), the same for everyone: generated from the date alone (no personal word banks), forms rotating daily, played as a 3-move challenge. `#daily` links straight to it.
 - **Challenge friends.** *Challenge friends* makes a link: everyone gets the same story and the same few moves (a move is any word or beat that differs from the start; putting it back refunds it). Each player copies their version link back to the group; *Compare* takes a pasted pile of links (a group-chat dump works), shows every version against the original with changes highlighted, and lets the room clap-vote. *Copy compare link* shares the whole set. No server: every copy is a link (`#c=` challenge, `#p=` in progress, `#s=` finished, `#cmp=` a set).
+- **Play live.** *Play live* opens a room (a short code like `RUREH`; share the invite link). The host sets up a story and starts a round; everyone tunes their own copy on their own phone and sends it; copies stay hidden until the host reveals them; then everyone gets 5 claps (never for their own) and the host shows results. Rounds are stored in the room, so it keeps a history of winners.
 - **The cast.** Keep a bit and its character joins your cast; tell more stories about them and they become someone.
 - **Links.** The URL carries every word (yours included), the form, tuned beats, the dial, the length, the seed and your pins. Links are versioned (`v: 2`); older links still load.
 
@@ -58,6 +59,19 @@ The grammar guarantees well-formed, not funny. Funny is the dial's job, and the 
   Packs load in `packs/index.json` order and are appended to the pools, so keep that list append-only; old links depend on word positions.
 
   The workflow needs *Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests*.
+
+## Live rooms
+
+`party/` is the room server: one [partyserver](https://github.com/cloudflare/partykit/tree/main/packages/partyserver) Durable Object per room code on Cloudflare Workers (partyserver is Cloudflare's successor to PartyKit). The room is the single authority on phase, host and claps. It never interprets stories: challenges and copies are size-capped JSON, and every client checks them with the same parsers it uses for links.
+
+**What's stored**, in the room's own storage in this Cloudflare account: the current round, and up to 50 finished rounds (the challenge, each copy with its nickname and clap count). No accounts, emails or IPs. A room deletes itself after 30 days without activity, and the host can wipe its history from the room bar. Only pages listed in `ALLOWED_ORIGINS` (plus localhost) can open a room.
+
+```bash
+cd party && npm install
+npm run dev        # local rooms on :8799 (the page uses them when served from localhost)
+npm test           # end-to-end: a full round, claps, history, host handoff, origin check
+npm run deploy     # then set ROOMS_PROD in app.js to the printed workers.dev host
+```
 
 ### Later
 

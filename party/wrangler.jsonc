@@ -1,0 +1,15 @@
+// Live rooms for Story Bits. One Durable Object per room code; state and stored votes live
+// in that object's storage, in your own Cloudflare account.
+{
+  "name": "story-bits-rooms",
+  "main": "src/server.js",
+  "compatibility_date": "2025-09-01",
+  "durable_objects": {
+    "bindings": [{ "name": "StoryRoom", "class_name": "StoryRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StoryRoom"] }],
+  "vars": {
+    // Pages that may open a room. Comma-separated origins; localhost is always allowed.
+    "ALLOWED_ORIGINS": "https://reeswrites.com"
+  }
+}

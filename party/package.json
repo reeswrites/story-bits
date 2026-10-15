@@ -1,0 +1,17 @@
+{
+  "name": "story-bits-rooms",
+  "private": true,
+  "type": "module",
+  "description": "Live rooms for Story Bits: a partyserver Durable Object on Cloudflare Workers.",
+  "scripts": {
+    "dev": "wrangler dev --port 8799",
+    "deploy": "wrangler deploy",
+    "test": "node test/rooms.test.mjs"
+  },
+  "dependencies": {
+    "partyserver": "0.5.10"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.0"
+  }
+}
