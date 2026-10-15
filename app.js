@@ -7,17 +7,45 @@ const SLOTS = [
   { key: "where", label: "Where", pool: WHERE, hint: "the place" },
   { key: "thing", label: "Thing", pool: THING, hint: "the object" },
 ];
-const DIAL_NAMES = ["Plausible", "Odd", "Absurd"];
 const DIAL_NOTES = [
-  "Event and feeling match. A thing your mom would tell you on the phone.",
-  "Anything goes. Some feelings won't quite fit the facts.",
-  "Feelings run against the facts, and the world gets strange. Then it lands safely.",
+  "No pair clashes. A thing your mom would tell you on the phone.",
+  "One pair clashes: the feeling doesn't fit what happened.",
+  "Every pair in play clashes. The world gets strange, then lands safely.",
 ];
+
+// Length in stanzas. Each step brings in one more beat, and some bring in a new card.
+// The bit itself is always stanza one; from two on, the story always lands.
+const LENGTHS = [
+  { slots: ["who", "what", "feel"], name: "Just the bit" },
+  { slots: ["who", "what", "feel", "where"], name: "Bit + landing" },
+  { slots: ["who", "what", "feel", "where", "thing"], name: "Short story" },
+  { slots: ["who", "what", "feel", "where", "thing"], name: "With a turn" },
+  { slots: ["who", "what", "feel", "where", "thing"], name: "The full telling" },
+];
+
+// Incongruity is counted in pairs. Each new card adds a pair that can either fit or clash.
+// event/feeling clash when their valence disagrees; the others clash across registers
+// (mundane vs odd vs absurd).
+const PAIRS = [
+  { a: "what", b: "feel", label: "event ↔ feeling", from: 1 },
+  { a: "where", b: "what", label: "place ↔ event", from: 2 },
+  { a: "thing", b: "where", label: "thing ↔ place", from: 3 },
+];
+const POOLS = { who: WHO, what: WHAT, feel: FEEL, where: WHERE, thing: THING };
+function clashes(pair, pick = state.pick) {
+  const A = POOLS[pair.a][pick[pair.a]], B = POOLS[pair.b][pick[pair.b]];
+  if (pair.a === "what" && pair.b === "feel") return A.v !== B.v;
+  return A.tier !== B.tier;
+}
+// Which pairs the dial wants clashing: none, just event/feeling, or all.
+const wantClash = (i) => state.dial === 2 || (state.dial === 1 && i === 0);
+const pairsInPlay = () => PAIRS.filter((p) => state.len >= p.from);
 
 const state = {
   pick: { who: 0, what: 0, feel: 0, where: 0, thing: 0 },
   locks: {},
   dial: 1,
+  len: 2,
   seed: 1,
 };
 
@@ -34,26 +62,21 @@ function seeded(seed) {
 }
 function choose(arr, rng) { return arr[Math.floor(rng() * arr.length)]; }
 
-// Pick an index from pool, honoring the dial. Returns index into the full pool.
+// Pick an index for one slot so each pair it belongs to fits or clashes as the dial asks.
+// Constraints relax one at a time if nothing satisfies them all.
 function pickIndex(key) {
-  const pool = SLOTS.find((s) => s.key === key).pool;
+  const pool = POOLS[key];
   let ok = pool.map((_, i) => i);
-  const d = state.dial;
-  if (key !== "who") {
-    // Plausible: tier 0 only. Odd: up to tier 1. Absurd: lean on tier 2.
-    if (d === 0) ok = ok.filter((i) => pool[i].tier === 0);
-    else if (d === 1) ok = ok.filter((i) => pool[i].tier <= 1);
-    else if (Math.random() < 0.65) ok = ok.filter((i) => pool[i].tier >= 1);
+  if (key === "what") {
+    // Keep the event itself grounded at low settings.
+    const maxTier = [0, 1, 2][state.dial];
+    ok = ok.filter((i) => pool[i].tier <= maxTier);
   }
-  if (key === "feel") {
-    // The incongruity: how well the feeling fits what happened.
-    const ev = WHAT[state.pick.what].v;
-    let fit;
-    if (d === 0) fit = ok.filter((i) => FEEL[i].v === ev || (ev === 0 && FEEL[i].v !== 0 && Math.random() < 0.5));
-    else if (d === 2) fit = ok.filter((i) => FEEL[i].v !== ev && (ev === 0 || FEEL[i].v !== 0 || Math.random() < 0.3));
-    if (fit && fit.length) ok = fit;
+  const rules = PAIRS.map((p, i) => ({ p, want: wantClash(i) })).filter((r) => r.p.a === key || r.p.b === key);
+  for (let n = rules.length; n >= 0; n--) {
+    const fit = ok.filter((i) => rules.slice(0, n).every((r) => clashes(r.p, { ...state.pick, [key]: i }) === r.want));
+    if (fit.length) { ok = fit; break; }
   }
-  if (!ok.length) ok = pool.map((_, i) => i);
   // Avoid repeating the current pick when there is a choice.
   const cur = state.pick[key];
   if (ok.length > 1) ok = ok.filter((i) => i !== cur);
@@ -109,14 +132,22 @@ function fillPlain(tpl, ctx) {
 
 function story(ctx) {
   const rng = seeded(state.seed);
+  const L = state.len;
+  if (L < 2) return [];
   const fv = String(ctx.feel.v);
-  const turnTier = Math.min(2, Math.max(state.dial, ctx.what.tier));
-  const paras = [
-    [choose(BEATS.setup, rng), choose(BEATS.dwell[fv], rng)],
-    [choose(BEATS.thing, rng), choose(BEATS.thingAfter, rng), choose(BEATS.turn[turnTier], rng)],
-    [choose(BEATS.resolve, rng), choose(BEATS.tag, rng)],
-  ];
-  return paras.map((p) => p.map((s) => fill(s, ctx)).join(" "));
+  const turnTier = Math.min(2, pairsInPlay().filter((p) => clashes(p)).length);
+  // Draw every beat in a fixed order so growing the story keeps the earlier lines.
+  const b = {
+    setup: choose(BEATS.setup, rng), dwell: choose(BEATS.dwell[fv], rng),
+    thing: choose(BEATS.thing, rng), after: choose(BEATS.thingAfter, rng),
+    turn: choose(BEATS.turn[turnTier], rng),
+    resolve: choose(BEATS.resolve.filter((r) => L >= 3 || !r.includes("{thing}")), rng),
+    tag: choose(BEATS.tag.filter((r) => L >= 3 || !r.includes("{thing}")), rng),
+  };
+  const paras = [[b.setup, L >= 5 && b.dwell]];
+  if (L >= 3) paras.push([b.thing, b.after, L >= 4 && b.turn]);
+  paras.push([b.resolve, L >= 5 && b.tag]);
+  return paras.map((p) => p.filter(Boolean).map((s) => fill(s, ctx)).join(" "));
 }
 
 // ---------- cast (characters you keep telling stories about) ----------
@@ -150,16 +181,18 @@ function tellAnother(whoIdx) {
 // ---------- URL share ----------
 function toHash() {
   const p = state.pick;
-  return `#${[p.who, p.what, p.feel, p.where, p.thing, state.dial, state.seed].join(".")}`;
+  return `#${[p.who, p.what, p.feel, p.where, p.thing, state.dial, state.seed, state.len].join(".")}`;
 }
 function fromHash() {
   const parts = location.hash.slice(1).split(".").map(Number);
-  if (parts.length !== 7 || parts.some((n) => !Number.isFinite(n) || n < 0)) return false;
-  const [who, what, feel, where, thing, dial, seed] = parts;
+  if (parts.length < 7 || parts.length > 8 || parts.some((n) => !Number.isInteger(n) || n < 0)) return false;
+  const [who, what, feel, where, thing, dial, seed, len = 5] = parts;
+  if (len < 1 || len > 5) return false;
   if (who >= WHO.length || what >= WHAT.length || feel >= FEEL.length || where >= WHERE.length || thing >= THING.length || dial > 2) return false;
   Object.assign(state.pick, { who, what, feel, where, thing });
   state.dial = dial;
   state.seed = seed || 1;
+  state.len = len;
   return true;
 }
 
@@ -170,7 +203,9 @@ function render() {
   const ctx = context();
   history.replaceState(null, "", toHash());
 
-  $("#cards").innerHTML = SLOTS.map((s) => {
+  const inPlay = LENGTHS[state.len - 1].slots;
+  $("#cards").dataset.n = inPlay.length;
+  $("#cards").innerHTML = SLOTS.filter((s) => inPlay.includes(s.key)).map((s) => {
     const raw = s.key === "who" ? ctx.who.n : s.key === "what" ? fillPlain(ctx.what.t, ctx) : s.key === "feel" ? fillPlain(ctx.feel.t, ctx) : ctx[s.key];
     const locked = !!state.locks[s.key];
     return `<div class="card c-${s.key}${locked ? " locked" : ""}">
@@ -185,6 +220,22 @@ function render() {
 
   document.querySelectorAll(".dial button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.dial === state.dial)));
   $("#dial-note").textContent = DIAL_NOTES[state.dial];
+
+  $("#len-n").textContent = state.len;
+  $("#len-name").textContent = LENGTHS[state.len - 1].name;
+  $("#len-down").disabled = state.len <= 1;
+  $("#len-up").disabled = state.len >= 5;
+  $("#len-pips").innerHTML = LENGTHS.map((_, i) => `<span class="${i < state.len ? "on" : ""}"></span>`).join("");
+
+  $("#pairs").innerHTML = pairsInPlay().map((p) => {
+    const c = clashes(p);
+    return `<li class="${c ? "clash" : "fit"}"><span class="pair-label">${p.label}</span><span class="pair-state">${c ? "clashes" : "fits"}</span></li>`;
+  }).join("");
+}
+
+function setLen(n) {
+  state.len = Math.max(1, Math.min(5, n));
+  render();
 }
 
 function renderCast() {
@@ -226,6 +277,8 @@ document.addEventListener("click", (e) => {
   else if (t.dataset.dial) { state.dial = +t.dataset.dial; reroll(SLOTS.map((s) => s.key)); }
   else if (t.dataset.another) tellAnother(+t.dataset.another);
   else if (t.dataset.forget) { cast = cast.filter((c) => c.who !== +t.dataset.forget); saveCast(cast); renderCast(); }
+  else if (t.id === "len-up") setLen(state.len + 1);
+  else if (t.id === "len-down") setLen(state.len - 1);
   else if (t.id === "shuffle") reroll(SLOTS.map((s) => s.key));
   else if (t.id === "retell") { state.seed = 1 + rand(1e9); render(); }
   else if (t.id === "keep") keepBit();
@@ -241,6 +294,8 @@ document.addEventListener("keydown", (e) => {
   if (e.key === " " && !e.target.closest("button")) { e.preventDefault(); reroll(SLOTS.map((s) => s.key)); }
   else if (e.key === "r") { state.seed = 1 + rand(1e9); render(); }
   else if (e.key === "k") keepBit();
+  else if (e.key === "+" || e.key === "=" || e.key === "]") setLen(state.len + 1);
+  else if (e.key === "-" || e.key === "[") setLen(state.len - 1);
 });
 
 // ---------- boot ----------

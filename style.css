@@ -58,9 +58,11 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--n, 5), 1fr);
   gap: 12px;
 }
+.cards[data-n="3"] { --n: 3; }
+.cards[data-n="4"] { --n: 4; }
 @media (max-width: 760px) { .cards { grid-template-columns: repeat(2, 1fr); } .c-who { grid-column: 1 / -1; min-height: 0; } }
 .card {
   background: var(--card);
@@ -111,6 +113,30 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
 .help { color: var(--ink-2); font-size: 14px; margin: 14px 0 0; }
 
 .controls { margin: 32px 0 8px; }
+.control-row { display: flex; flex-wrap: wrap; gap: 14px 32px; align-items: center; }
+.len { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.step {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  font: 500 18px/1 "IBM Plex Mono", monospace; cursor: pointer;
+}
+.step:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+.step:disabled { opacity: .35; cursor: default; }
+.len-read { display: inline-flex; align-items: center; gap: 8px; font: 500 15px "IBM Plex Mono", monospace; min-width: 4.5em; }
+.pips { display: inline-flex; gap: 3px; }
+.pips span { width: 6px; height: 16px; border-radius: 2px; border: 1.5px solid var(--ink); }
+.pips span.on { background: var(--ink); }
+.len-name { font-style: italic; color: var(--ink-2); font-size: 15px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.pairs { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.pairs li {
+  display: inline-flex; gap: 8px; align-items: center;
+  font: 13px "IBM Plex Mono", monospace;
+  border: 1.5px solid var(--ink); border-radius: 999px; padding: 4px 12px;
+}
+.pairs .pair-state { font-weight: 500; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.pairs li.clash { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pairs li.fit { border-style: dashed; }
 .dial { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dial-label { margin-right: 6px; }
 .dial button {
@@ -135,6 +161,7 @@ main { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
   background-position: 0 70px;
 }
 .eyebrow { margin: 0 0 6px; color: var(--accent); }
+.story:empty { display: none; }
 .bit { font-size: clamp(22px, 3.4vw, 30px); line-height: 1.3; margin: 0 0 24px; font-weight: 600; letter-spacing: -0.01em; }
 .story p { margin: 0 0 14px; }
 mark { color: inherit; padding: 0 .15em; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }

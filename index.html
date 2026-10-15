@@ -24,13 +24,23 @@
     </section>
 
     <section class="controls" aria-label="Controls">
-      <div class="dial" role="group" aria-label="Incongruity">
-        <span class="dial-label">Incongruity</span>
-        <button data-dial="0">Plausible</button>
-        <button data-dial="1">Odd</button>
-        <button data-dial="2">Absurd</button>
+      <div class="control-row">
+        <div class="len" role="group" aria-label="Length">
+          <span class="dial-label">Length</span>
+          <button id="len-down" class="step" aria-label="Shorter">−</button>
+          <span class="len-read"><span id="len-pips" class="pips" aria-hidden="true"></span><span><b id="len-n">2</b> <span class="sr">stanzas</span></span></span>
+          <button id="len-up" class="step" aria-label="Add a stanza">+</button>
+          <span id="len-name" class="len-name"></span>
+        </div>
+        <div class="dial" role="group" aria-label="Incongruity">
+          <span class="dial-label">Incongruity</span>
+          <button data-dial="0">Plausible</button>
+          <button data-dial="1">Odd</button>
+          <button data-dial="2">Absurd</button>
+        </div>
       </div>
       <p id="dial-note" class="dial-note"></p>
+      <ul id="pairs" class="pairs" aria-label="Pairs in play"></ul>
     </section>
 
     <section class="page" aria-label="The story">
