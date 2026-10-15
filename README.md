@@ -144,7 +144,7 @@ Publishing is a public space now. The GitHub route below is only for curating wh
 
 ## Run it
 
-No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), `grammar-ops.js` (grammar edits: words, slots, tags, fork-on-write, piece remap; no DOM), `edit-plan.js` (what the picker's grammar section offers; no DOM), then the page: `library.js`, `history.js` (the timeline's stores and the History sheet), `picker-edit.js` (the picker's *Change the grammar here*), `jam.js`, `spaces.js`, `app.js`.
+No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), `grammar-ops.js` (grammar edits: words, slots, tags, fork-on-write, piece remap; no DOM), `edit-plan.js` (what the picker's grammar section offers; no DOM), then the page: `library.js`, `history.js` (the timeline's stores and the History sheet), `picker-edit.js` (the picker's *Change the grammar here*), `jam.js`, `spaces.js`, then the page's own code split by concern: `ui-core.js` (`$`, toast, copy, stored values, library storage), `render.js` (the piece, headline, story, part labels), `picker.js` (word actions, the sheet, moves and previews), `controls.js` (folds, menus, first-run hint, reload, grammar/form/length), `game.js` (challenges, passing copies, compare), `bank.js` (word bank, kept shelf, packs), and `app.js` (event wiring and boot).
 
 ```bash
 python3 -m http.server 4290
