@@ -94,7 +94,7 @@ Built in:
 
 **Constraints**, Oulipo-style, filter what a grammar offers, so it can't produce a word that breaks them: a **lipogram** (no letter *e*, covering words, determiners and lines), **alliteration** (every word starts with a letter), **short words** (a syllable cap), or **closed** (no word bank).
 
-The grammar makes pieces well-formed. Whether one works is up to the dial, the words, and you. `grammar.js` holds the checks (`checkEntry`, `checkForm`, `checkGrammar`) the page, the library, links and the pack tool all share.
+The grammar makes pieces well-formed. Whether one works is up to the dial, the words, and you. `src/core/grammar.js` holds the checks (`checkEntry`, `checkForm`, `checkGrammar`) the page, the library, links and the pack tool all share.
 
 ### The library
 
@@ -144,13 +144,13 @@ Publishing is a public space now. The GitHub route below is only for curating wh
 
 ## Run it
 
-No build step. Plain HTML/CSS/JS, loaded in this order: `data.js` (built-in grammars), `grammar.js` (checks), `engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), `grammar-ops.js` (grammar edits: words, slots, tags, fork-on-write, piece remap; no DOM), `edit-plan.js` (what the picker's grammar section offers; no DOM), then the page: `library.js`, `history.js` (the timeline's stores and the History sheet), `picker-edit.js` (the picker's *Change the grammar here*), `jam.js`, `spaces.js`, then the page's own code split by concern: `ui-core.js` (`$`, toast, copy, stored values, library storage), `render.js` (the piece, headline, story, part labels), `picker.js` (word actions, the sheet, moves and previews), `controls.js` (folds, menus, first-run hint, reload, grammar/form/length), `game.js` (challenges, passing copies, compare), `bank.js` (word bank, kept shelf, packs), and `app.js` (event wiring and boot).
+No build step. Plain HTML/CSS/JS. Layout: `index.html` and `style.css` at the root (Pages serves it); `grammars/` (`index.js` holds the shared bits, then one file per built-in grammar; see its header to add one); `src/core/` (pure, DOM-free logic); `src/ui/` (the page); `src/collab/` (library, jams, spaces); `party/` (the room server). Scripts are loaded in this order: `grammars/index.js` then `grammars/{story-bits,small-poems,sayings,just-so,hinge}.js` (built-in grammars), `src/core/grammar.js` (checks), `src/core/engine.js` (phrases, the dial, beats, snapshots and links; no DOM), `src/core/timeline.js` (the undo timeline, grammar versions, drafts and step labels; no DOM), `src/core/grammar-ops.js` (grammar edits: words, slots, tags, fork-on-write, piece remap; no DOM), `src/core/edit-plan.js` (what the picker's grammar section offers; no DOM), then the page: `src/collab/library.js`, `src/ui/history.js` (the timeline's stores and the History sheet), `src/ui/picker-edit.js` (the picker's *Change the grammar here*), `src/collab/jam.js`, `src/collab/spaces.js`, then the page's own code split by concern: `src/ui/ui-core.js` (`$`, toast, copy, stored values, library storage), `src/ui/render.js` (the piece, headline, story, part labels), `src/ui/picker.js` (word actions, the sheet, moves and previews), `src/ui/controls.js` (folds, menus, first-run hint, reload, grammar/form/length), `src/ui/game.js` (challenges, passing copies, compare), `src/ui/bank.js` (word bank, kept shelf, packs), and `src/ui/app.js` (event wiring and boot).
 
 ```bash
 python3 -m http.server 4290
 ```
 
-Engine tests (Node 22+, no dependencies) load `data.js`, `grammar.js`, `engine.js` and `timeline.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases, escaping, history (the timeline, grammar versions and their storage, pinned versions, drafts, step labels), grammar edits (every op, tombstones, forks, piece remaps) and the picker's grammar section (who sees it, its offers, the add form's checks, one step per fork and edit). Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
+Engine tests (Node 22+, no dependencies) load `grammars/*.js`, `src/core/grammar.js`, `src/core/engine.js` and `src/core/timeline.js` in a vm and cover generation for every grammar, form, length and dial setting, the dial's clashes, constraints (every built-in grammar's required slots keep at least three words under no-*e*, alliteration on *s* and a two-syllable cap; Story Bits' older pools are listed as known gaps), the kept shelf (keep, migration from the cast, *Tell another*), v1–v4 link round-trips, `checkGrammar`, nested phrases, escaping, history (the timeline, grammar versions and their storage, pinned versions, drafts, step labels), grammar edits (every op, tombstones, forks, piece remaps) and the picker's grammar section (who sees it, its offers, the add form's checks, one step per fork and edit). Every test runs over every built-in grammar, so a new one is covered by adding it. CI (`.github/workflows/test.yml`) runs them and `node --check` on every script, on every push and pull request:
 
 ```bash
 node --test test/*.test.mjs
@@ -163,7 +163,7 @@ cd party && npm install
 npm run dev        # local jams and spaces on :8799 (the page uses them when served from localhost)
 npm test           # end to end: jams (roles, together, comments, workshop, retention) and spaces
                    # (keys, versions, items, lore, public, export, jams in a space, delete)
-npm run deploy     # then set ROOMS_PROD in jam.js to the printed workers.dev host
+npm run deploy     # then set ROOMS_PROD in src/collab/jam.js to the printed workers.dev host
 ```
 
 Test a pack locally:

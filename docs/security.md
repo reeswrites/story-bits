@@ -2,7 +2,7 @@
 
 Reviewed 2026-10-15, at commit 4aee18a ("Escape grammar text everywhere; reject markup in grammars").
 Scope: the room server (`party/src/server.js`, the jam `StoryRoom`; `party/src/space.js`, the
-space `StorySpace`), the clients `jam.js` and `spaces.js`, and how `app.js` and `library.js`
+space `StorySpace`), the clients `src/collab/jam.js` and `src/collab/spaces.js`, and how `src/ui/app.js` and `src/collab/library.js`
 render anything that came from a jam, a space or a link.
 
 The threat model: Story Bits has no accounts. Access is by keys in links, a jam's code is enough
@@ -19,18 +19,18 @@ tests are in `party/test/security.test.mjs` (plus updates to `rooms.test.mjs` an
 | # | Severity | Where | What |
 |---|---|---|---|
 | 1 | Critical | `party/src/server.js:200`, `:122` | Anyone can become a jam's host by copying the owner's id |
-| 2 | High | `app.js:283`, `app.js:297` | Markup injection through grammar slot names in attributes |
-| 3 | High | `grammar.js:228`, `library.js:206` | Constraint settings go unchecked into the grammar editor's inputs |
+| 2 | High | `src/ui/app.js:283`, `src/ui/app.js:297` | Markup injection through grammar slot names in attributes |
+| 3 | High | `src/core/grammar.js:228`, `src/collab/library.js:206` | Constraint settings go unchecked into the grammar editor's inputs |
 | 4 | Medium | `party/src/space.js:114`, `:335` | Public spaces (and jams in a space) hand out jam codes |
-| 5 | Medium | `jam.js:21` | Jam codes are short enough to guess, and a code is a view key |
+| 5 | Medium | `src/collab/jam.js:21` | Jam codes are short enough to guess, and a code is a view key |
 | 6 | Medium | `party/src/server.js:200` | Viewers can fill a jam so its writers can't join; one connection can add many people |
 | 7 | Medium | `party/src/server.js:191`, `party/src/space.js:129` | No rate limits: message floods, comment spam, scripts opening jams and spaces in bulk |
 | 8 | Medium | `party/src/server.js:149`, `:340`; `party/src/space.js:316`, `:371` | Stored values can outgrow what a Durable Object value holds, breaking the jam or space |
 | 9 | Low | `party/src/server.js:351`; `party/src/space.js:165`, `:290` | Retention accepts inherited names (`"toString"`) |
 | 10 | Low | `party/src/server.js:244`, `:320`, `:268` | Patches, claps and notes accept `__proto__` keys |
 | 11 | Low | `party/src/server.js:170`, `:157`, `:354`; `party/src/space.js:84` | Retention paths: unjoined jams kept forever; delete/alarm leave the alarm and open connections |
-| 12 | Low | `spaces.js:139`, `spaces.js:46`; `party/src/space.js:134` | Space keys and comment ids travel in URLs |
-| 13 | Info | `jam.js:372`, `app.js:87` | Defense in depth: one unescaped server value; `esc` didn't escape `'` |
+| 12 | Low | `src/collab/spaces.js:139`, `src/collab/spaces.js:46`; `party/src/space.js:134` | Space keys and comment ids travel in URLs |
+| 13 | Info | `src/collab/jam.js:372`, `src/ui/app.js:87` | Defense in depth: one unescaped server value; `esc` didn't escape `'` |
 
 ### 1. Critical: anyone can become a jam's host by copying the owner's id
 
@@ -45,15 +45,15 @@ comments. A connection could also change its pid with a second `hello`.
 SHA-256 of it (`server.js` `publicId`), and keys players, owner, host, comments, copies and claps
 by that. Sending a public id as your pid just hashes to some other id. A connection keeps the id
 it first said hello with. Jams stored before this are migrated on load (`migrateIds`). The client
-compares against `you.pid` (`jamMe()` in `jam.js`) instead of its own pid. Residual: in a jam
+compares against `you.pid` (`jamMe()` in `src/collab/jam.js`) instead of its own pid. Residual: in a jam
 created before this fix, someone who was in it and saw the owner's raw pid could still claim it.
 Those jams are a day old at most.
 
 ### 2. High: markup injection through grammar slot names
 
 `checkGrammar` now rejects `<` and `>`, but slot names may contain `"`, and two places put them
-in an attribute unescaped: the ghost "add a …" button's `title` (`app.js:283`) and each word's
-`aria-label` (`app.js:297`). A grammar from a link, a jam or a space with a slot named
+in an attribute unescaped: the ghost "add a …" button's `title` (`src/ui/app.js:283`) and each word's
+`aria-label` (`src/ui/app.js:297`). A grammar from a link, a jam or a space with a slot named
 `" onfocus=eval(name) x="` adds an event handler to every word button: script on reeswrites.com
 when the word gets focus (a click or a tab). Grammars legitimately contain double quotes
 (the built-ins do), so rejecting them isn't the fix.
@@ -63,7 +63,7 @@ when the word gets focus (a click or a tab). Grammars legitimately contain doubl
 ### 3. High: constraint settings go unchecked into the grammar editor
 
 `checkGrammar` checked only each constraint's `type`. `maxSyllables.n` is rendered unescaped into
-the editor's `<input value="…">` (`library.js:206`); a shared grammar with
+the editor's `<input value="…">` (`src/collab/library.js:206`); a shared grammar with
 `n: "\" autofocus onfocus=… x=\""` runs script when you open it in the editor. `letters` and
 `letter` were escaped there but went unchecked into the word filter.
 
@@ -167,7 +167,7 @@ the body. GET still works for public spaces and for pages loaded before this cha
 
 ### 13. Info: defense in depth
 
-`jam.js:372` printed the jam's mode unescaped (the server only allows two values). Escaped.
+`src/collab/jam.js:372` printed the jam's mode unescaped (the server only allows two values). Escaped.
 
 ## Checked and fine
 
@@ -179,7 +179,7 @@ the body. GET still works for public spaces and for pages loaded before this cha
 - Malformed JSON, non-objects, non-string types and oversized messages are dropped by both
   servers (now tested); every client parses what it receives with the same checks as links.
 - Names, comments, lore, item and space names are rendered through `esc` (and `cleanWord`) in
-  `jam.js`, `spaces.js`, `app.js` and `library.js`; toasts use `textContent`.
+  `src/collab/jam.js`, `src/collab/spaces.js`, `src/ui/app.js` and `src/collab/library.js`; toasts use `textContent`.
 - Space comment authors aren't exposed (`pid` is stripped from views).
 - Invite keys are 64 random bits; space ids 8 characters.
 

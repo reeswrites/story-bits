@@ -52,7 +52,7 @@ every clause has one owner: *found an accordion in the attic*, never *found an a
 remembers everything in the attic*.
 
 **Moves** are the picker's lateral changes, generated from grammar data alone (`moveCandidates` in
-engine.js). Each returns whole-phrase candidates, nearest first:
+src/core/engine.js). Each returns whole-phrase candidates, nearest first:
 
 | move | from the grammar |
 |---|---|
@@ -280,8 +280,8 @@ phrase is marked as a **callback**.
 
 Every action can be taken back, and the design assumes most of it happens on a phone.
 
-**One timeline** (`timeline.js`, pure; `history.js`, the page). An entry is plain data
-`{ kind, label, ... }`; `history.js` keeps an undoer per kind. Kinds: `piece` (render() notes
+**One timeline** (`src/core/timeline.js`, pure; `src/ui/history.js`, the page). An entry is plain data
+`{ kind, label, ... }`; `src/ui/history.js` keeps an undoer per kind. Kinds: `piece` (render() notes
 each change as `{ from, to }`, as the calm-view undo did; undo puts back only what the step
 changed), `grammar` (`{ id, before, after }` are version numbers, `null` meaning not in the
 library; `piece` rides along when the edit moved the piece, so one undo puts both back), `bank`,
@@ -332,7 +332,7 @@ inside; Compare becomes horizontal scroll-snap cards. Desktop keeps the inline c
 
 ## Editing a grammar from the picker
 
-`grammar-ops.js` (`window.grammarOps`, a plain script after `engine.js`, no DOM or storage) is the
+`src/core/grammar-ops.js` (`window.grammarOps`, a plain script after `src/core/engine.js`, no DOM or storage) is the
 engine half of tuning a grammar word by word from the picker. Every operation takes a grammar and
 returns a **new** one; the input is never mutated. Results are `{ grammar, label }`, or `{ error }`
 (a plain-language reason) when the edit is refused or would fail `checkGrammar`: an invalid grammar
@@ -366,7 +366,7 @@ Also: `addWord` and `setWordTags` take free `tags` (short lowercase labels, up t
 Sideways prefers to share); `addSlot` keeps `relation` and `hint`; a fork of a grammar already named
 “… (yours)” keeps its name.
 
-**The picker's section** (`edit-plan.js`, pure; `picker-edit.js`, the page). *Change the grammar
+**The picker's section** (`src/core/edit-plan.js`, pure; `src/ui/picker-edit.js`, the page). *Change the grammar
 here* is a disclosure at the bottom of a word's picker with three tabs: **Words** (add to this slot
 with `wordEntry` + `addCheck`, the word bank's checks; retire or restore), **This word**
 (`setWordTags`), **Slots** (`setDeterminers`, `removeSlot`, and `slotOffers`: a describing word
@@ -393,7 +393,7 @@ by default), and the host can wipe or delete it any time. Retention is a setting
 
 ## Status (2026-10-15)
 
-Built: grammar documents and checks (`grammar.js`), Story Bits, Small Poems, Sayings, Just-so
+Built: grammar documents and checks (`src/core/grammar.js`), Story Bits, Small Poems, Sayings, Just-so
 stories and Hinge prompts, a kept shelf per grammar, constraints
 (lipogram, alliteration, syllable cap, closed), the library (fork, edit, share, import, suggest),
 jams with roles, together mode, presence, comments, and workshop rounds with optional move limits,

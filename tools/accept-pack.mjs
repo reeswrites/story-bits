@@ -14,9 +14,11 @@ const { BODY = "", NUMBER = "" } = process.env;
 if (!/^\d+$/.test(NUMBER)) fail("NUMBER must be the issue number.");
 
 // Load the page's own data and grammar, so the rules here can't drift from the site's.
+// Registry order = script order in index.html (see grammars/index.js).
+const GRAMMAR_FILES = ["index", "story-bits", "small-poems", "sayings", "just-so", "hinge"].map((n) => `grammars/${n}.js`);
 const ctx = vm.createContext({});
 vm.runInContext(
-  `${fs.readFileSync("data.js", "utf8")}\n${fs.readFileSync("grammar.js", "utf8")}\n` +
+  `${[...GRAMMAR_FILES, "src/core/grammar.js"].map((f) => fs.readFileSync(f, "utf8")).join("\n")}\n` +
     "this.GRAMMARS = GRAMMARS; this.checkEntry = checkEntry; this.checkForm = checkForm; this.checkGrammar = checkGrammar; this.cleanWord = cleanWord;",
   ctx,
 );

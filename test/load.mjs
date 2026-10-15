@@ -1,4 +1,4 @@
-// Loads the page's DOM-free scripts (data.js, grammar.js, engine.js, timeline.js, grammar-ops.js) into a
+// Loads the page's DOM-free scripts (grammars/*.js, src/core/*.js) into a
 // fresh vm context, the way index.html does: plain scripts sharing one global scope. Returns run(code), which evaluates
 // code in that scope (so tests can reach `state`, `G`, `rng` and friends directly).
 import { readFileSync } from "node:fs";
@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-export const FILES = ["data.js", "grammar.js", "engine.js", "timeline.js", "grammar-ops.js", "edit-plan.js"];
+// Registry order = script order in index.html.
+export const GRAMMAR_FILES = ["index", "story-bits", "small-poems", "sayings", "just-so", "hinge"].map((n) => `grammars/${n}.js`);
+export const FILES = [...GRAMMAR_FILES, ...["grammar", "engine", "timeline", "grammar-ops", "edit-plan"].map((n) => `src/core/${n}.js`)];
 
 export function loadEngine(files = FILES.map((f) => root + f)) {
   const ctx = vm.createContext({ console, TextEncoder, TextDecoder, btoa, atob, structuredClone });

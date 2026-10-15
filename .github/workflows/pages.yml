@@ -40,11 +40,11 @@ jobs:
           mkdir _site
           git ls-files | grep -vE '^(\.github|party|test|tools)/' | xargs -I{} cp --parents {} _site/
           v="${GITHUB_SHA::12}"
-          sed -E -i "s#(src|href)=\"([a-z0-9-]+\.(js|css))\"#\1=\"\2?v=${v}\"#g" _site/index.html
+          sed -E -i "s#(src|href)=\"([a-z0-9/-]+\.(js|css))\"#\1=\"\2?v=${v}\"#g" _site/index.html
           echo "Stamped with ${v}:"
-          grep -oE '(src|href)="[a-z0-9-]+\.(js|css)\?v=[0-9a-f]+"' _site/index.html
+          grep -oE '(src|href)="[a-z0-9/-]+\.(js|css)\?v=[0-9a-f]+"' _site/index.html
           # Every local script and stylesheet must be stamped, or a deploy could mix versions.
-          if grep -qE '(src|href)="[a-z0-9-]+\.(js|css)"' _site/index.html; then echo "unstamped asset link left"; exit 1; fi
+          if grep -qE '(src|href)="[a-z0-9/-]+\.(js|css)"' _site/index.html; then echo "unstamped asset link left"; exit 1; fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
